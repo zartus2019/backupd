@@ -1,0 +1,1417 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>backupd — резервное копирование</title>
+<style>
+:root {
+  --bg:#f2f5f8; --card:#ffffff; --text:#1c2733; --muted:#64748b;
+  --accent:#2563eb; --accent-dark:#1d4ed8; --ok:#16a34a; --err:#dc2626;
+  --warn:#d97706; --line:#e2e8f0; --mono:"Cascadia Mono",Consolas,monospace;
+}
+* { box-sizing:border-box; }
+body { margin:0; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+       background:var(--bg); color:var(--text); font-size:14px; }
+header { background:#0f172a; color:#fff; padding:13px 22px;
+         display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+header h1 { font-size:16px; margin:0; font-weight:600; letter-spacing:.3px; }
+header .sub { color:#94a3b8; font-size:12px; }
+.badge { font-size:11.5px; padding:3px 10px; border-radius:999px;
+         background:#1e293b; color:#94a3b8; }
+.badge.ok { color:#4ade80; background:rgba(34,197,94,.15); }
+.badge.err { color:#f87171; background:rgba(239,68,68,.15); }
+nav { display:flex; gap:2px; padding:0 22px; background:var(--card);
+      border-bottom:1px solid var(--line); }
+nav button { border:0; background:none; padding:11px 16px; font-size:14px;
+             cursor:pointer; color:var(--muted); border-bottom:2px solid transparent; }
+nav button.active { color:var(--accent); border-bottom-color:var(--accent); font-weight:600; }
+main { padding:20px 22px; max-width:1250px; margin:0 auto; }
+.card { background:var(--card); border:1px solid var(--line); border-radius:10px;
+        padding:16px 18px; margin-bottom:16px; }
+.card h2 { font-size:14px; margin:0 0 12px; font-weight:600; color:#334155; }
+.toolbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
+.toolbar h2 { font-size:16px; margin:0; }
+button.btn { border:1px solid var(--line); background:#fff; color:var(--text);
+             border-radius:7px; padding:7px 14px; font-size:13px; cursor:pointer; }
+button.btn:hover { border-color:#cbd5e1; background:#f8fafc; }
+button.btn.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+button.btn.primary:hover { background:var(--accent-dark); }
+button.btn.danger { color:var(--err); }
+button.ibtn { border:1px solid var(--line); background:#fff; border-radius:6px;
+              padding:4px 8px; cursor:pointer; font-size:13px; line-height:1; }
+button.ibtn:hover { background:#f1f5f9; }
+button.ibtn:disabled { opacity:.4; cursor:default; }
+table { width:100%; border-collapse:collapse; }
+th { text-align:left; font-size:11.5px; text-transform:uppercase; letter-spacing:.4px;
+     color:var(--muted); padding:8px 10px; border-bottom:1px solid var(--line); }
+td { padding:10px; border-bottom:1px solid var(--line); vertical-align:middle; }
+tr:last-child td { border-bottom:0; }
+td.mono, .mono { font-family:var(--mono); font-size:12.5px; }
+.muted { color:var(--muted); }
+.pill { display:inline-block; font-size:11.5px; font-weight:600; padding:3px 9px;
+        border-radius:999px; }
+.pill.ok { background:#dcfce7; color:#15803d; }
+.pill.error { background:#fee2e2; color:#b91c1c; }
+.pill.stopped { background:#fef3c7; color:#b45309; }
+.pill.running { background:#dbeafe; color:#1d4ed8; }
+.pill.idle { background:#f1f5f9; color:#64748b; }
+.spin { display:inline-block; animation:rot 1s linear infinite; }
+@keyframes rot { to { transform:rotate(360deg); } }
+/* таблица заданий: на узком окне прокручивается внутри карточки,
+   а не вылезает за рамку (кнопки «Действия» не сжимаются) */
+.jobswrap { overflow-x:auto; }
+.jobswrap table { min-width:1100px; }
+/* прогресс FTP-копирования — отдельная строка под строкой задания */
+.progrow td { background:#eff6ff; padding:7px 10px; }
+.pline { display:flex; align-items:center; gap:12px; }
+.pbar { width:240px; height:6px; background:#dbeafe; border-radius:999px;
+        overflow:hidden; flex:none; }
+.pfill { height:100%; background:#2563eb; border-radius:999px;
+         transition:width .6s ease; }
+.pmeta { font-size:12px; color:var(--muted); white-space:nowrap; }
+.path { max-width:230px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.actions { white-space:nowrap; }
+/* кнопки в два ряда: прогон (▶ ⏩ 🧪 ⏹) и управление (📄 ✎ 🗑) —
+   в один ряд колонка «Действия» вылезает за рамку таблицы */
+.actions .arow { display:flex; gap:4px; margin-top:3px; }
+.actions .arow:first-child { margin-top:0; }
+/* модальное окно */
+.modal-bg { position:fixed; inset:0; background:rgba(15,23,42,.55); display:flex;
+            align-items:flex-start; justify-content:center; padding:30px 16px;
+            overflow:auto; z-index:50; }
+.modal { background:#fff; border-radius:12px; width:720px; max-width:100%;
+         padding:22px 24px; box-shadow:0 20px 60px rgba(0,0,0,.3); }
+.modal h2 { margin:0 0 18px; font-size:17px; }
+.grid { display:grid; grid-template-columns:1fr 1fr; gap:12px 16px; }
+.grid .full { grid-column:1 / -1; }
+label { display:block; font-size:12px; font-weight:600; color:#475569; margin-bottom:4px; }
+input[type=text], input[type=password], input[type=number], input[type=time],
+input[type=month], select, textarea {
+  width:100%; border:1px solid #cbd5e1; border-radius:7px; padding:8px 10px;
+  font-size:13.5px; font-family:inherit; background:#fff; color:var(--text); }
+textarea { font-family:var(--mono); font-size:12.5px; resize:vertical; min-height:70px; }
+input:focus, select:focus, textarea:focus { outline:2px solid #bfdbfe; border-color:var(--accent); }
+.hint { font-size:11.5px; color:var(--muted); margin-top:4px; }
+fieldset { border:1px solid var(--line); border-radius:9px; padding:12px 14px; margin:0; }
+fieldset legend { font-size:12px; font-weight:600; color:#475569; padding:0 6px; }
+.row { display:flex; gap:16px; flex-wrap:wrap; }
+.row > div { flex:1; min-width:130px; }
+.checkbox { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text); }
+.checkbox input { width:auto; }
+.modal-footer { display:flex; justify-content:flex-end; gap:10px; margin-top:20px; }
+.hidden { display:none !important; }
+/* экран входа */
+.login { position:fixed; inset:0; z-index:100; display:flex;
+         align-items:center; justify-content:center;
+         background:rgba(15,23,42,.82); backdrop-filter:blur(3px); }
+.login-box { background:var(--card,#1e293b); border:1px solid var(--line,#334155);
+             padding:32px 28px; border-radius:12px; width:340px; text-align:center;
+             box-shadow:0 18px 50px rgba(0,0,0,.5); }
+.login-box h1 { margin:0 0 2px; font-size:22px; }
+.login-box .sub { font-size:12px; }
+.login-box input { width:100%; box-sizing:border-box; margin:16px 0 10px; text-align:center; }
+.login-err { color:#f87171; font-size:13px; margin-top:10px; }
+/* журнал */
+#logView { background:#0f172a; color:#cbd5e1; font-family:var(--mono); font-size:12.5px;
+           border-radius:8px; padding:14px; height:62vh; overflow:auto; white-space:pre-wrap; }
+select.jobpick { width:280px; }
+/* история */
+.hist td { font-size:13px; }
+footer { text-align:center; color:#94a3b8; font-size:12px; padding:8px 0 26px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>backupd</h1>
+  <span class="sub">резервное копирование Linux → Windows (rsync)</span>
+  <span class="badge" id="rsyncBadge">rsync: …</span>
+  <span class="badge" id="authBadge"></span>
+</header>
+
+<nav>
+  <button id="tabJobs" class="active" onclick="switchTab('jobs')">Задания</button>
+  <button id="tabLog" onclick="switchTab('log')">Журнал</button>
+  <button id="tabSystem" onclick="switchTab('system')">Система</button>
+</nav>
+
+<main>
+
+<!-- ============================ ЗАДАНИЯ ============================ -->
+<section id="secJobs">
+  <div class="toolbar">
+    <h2>Задания резервного копирования</h2>
+    <button class="btn primary" onclick="openJobForm(null)">＋ Добавить задание</button>
+  </div>
+  <div class="card" style="padding:6px 10px;">
+    <div class="jobswrap">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:40px">Вкл</th><th>Имя</th><th>Источник</th><th>Цель</th>
+          <th>Режим</th><th>Расписание</th><th>Последний запуск</th><th>Следующий</th>
+          <th>Действия</th>
+        </tr>
+      </thead>
+      <tbody id="jobsBody"></tbody>
+    </table>
+    </div>
+    <div id="jobsEmpty" class="muted" style="padding:18px;text-align:center"
+         hidden>Заданий пока нет. Нажмите «Добавить задание».</div>
+  </div>
+</section>
+
+<!-- ============================ ЖУРНАЛ ============================ -->
+<section id="secLog" class="hidden">
+  <div class="toolbar">
+    <h2>Журнал</h2>
+    <div>
+      <select class="jobpick" id="logJob" onchange="logJobChanged()"></select>
+      <button class="btn" style="margin-left:8px" onclick="refreshLog(true)">Обновить</button>
+    </div>
+  </div>
+  <div class="card">
+    <div id="logView">Выберите задание…</div>
+  </div>
+</section>
+
+<!-- ============================ СИСТЕМА ============================ -->
+<section id="secSystem" class="hidden">
+  <div class="card">
+    <h2>Состояние сервера</h2>
+    <table>
+      <tr><td class="muted">Версия backupd</td><td id="sVer" class="mono"></td></tr>
+      <tr><td class="muted">rsync</td><td id="sRsync" class="mono"></td></tr>
+      <tr><td class="muted">lftp (FTP)</td><td id="sLftp" class="mono"></td></tr>
+      <tr><td class="muted">Python</td><td id="sPy" class="mono"></td></tr>
+      <tr><td class="muted">Время работы</td><td id="sUp"></td></tr>
+      <tr><td class="muted">Каталог данных</td><td id="sData" class="mono"></td></tr>
+      <tr><td class="muted">Заданий</td><td id="sJobs"></td></tr>
+      <tr><td class="muted">Монтирование SMB</td><td id="sSudo"></td></tr>
+      <tr><td class="muted">Отключение SMB</td><td id="sFusermount" class="mono"></td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h2>Доступ (пароль)</h2>
+    <p class="hint" style="margin-top:0">
+      Если задан пароль, для доступа к интерфейсу нужно войти. Сессия действует
+      12 часов. Программный доступ к API: получить токен
+      <span class="mono">POST /api/login</span> и передавать его в заголовке
+      <span class="mono">Authorization: Bearer &lt;токен&gt;</span>.
+    </p>
+    <div class="row" style="align-items:center">
+      <span id="tokenState" class="pill idle">…</span>
+      <div style="flex:2">
+        <button class="btn" onclick="setPassword()">Задать / сменить пароль</button>
+        <button class="btn" id="tokenOffBtn" onclick="clearPassword()">Отключить авторизацию</button>
+        <button class="btn" id="logoutBtn" onclick="doLogout()">Выйти</button>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Push-уведомления (ntfy)</h2>
+    <p class="hint" style="margin-top:0">
+      Сообщения о <b>начале</b> и <b>завершении</b> каждого задания — на ваше
+      устройство. Работает через публичный сервер
+      <span class="mono">ntfy.sh</span> (интернет) или через собственный
+      ntfy-сервер в локальной сети (например
+      <span class="mono">http://192.168.x.x:2000</span>).
+      Клиенты: <b>Android</b> — приложение «ntfy», <b>Linux</b> — ntfy
+      desktop (или скрипт), <b>Windows</b> — «ntfy for Windows». В приложении
+      подпишитесь на сервер и топик из полей ниже.
+    </p>
+    <div class="row">
+      <div style="flex:2">
+        <label>Сервер ntfy</label>
+        <input type="text" id="n_url" class="mono" placeholder="https://ntfy.sh">
+      </div>
+      <div style="flex:2">
+        <label>Топик (имя подписки в приложении)</label>
+        <input type="text" id="n_topic" class="mono" placeholder="backupd-…">
+      </div>
+    </div>
+    <div class="row" style="align-items:center;margin-top:10px">
+      <label class="checkbox"><input type="checkbox" id="n_enabled">
+        Включить push-уведомления</label>
+    </div>
+    <div class="row" style="align-items:center;margin-top:10px">
+      <span id="notifyState" class="pill idle">…</span>
+      <div style="flex:2">
+        <button class="btn" onclick="saveNotify()">Сохранить</button>
+        <button class="btn" onclick="testNotify()">Отправить тест</button>
+      </div>
+    </div>
+    <p class="hint">Топик — как пароль: тот, кто его знает, читает
+    уведомления. Не публикуйте его; при необходимости смените на случайную
+    строку. Ошибки доставки не влияют на сами копии — только на уведомление.</p>
+  </div>
+  <div class="card">
+    <h2>История запусков</h2>
+    <table class="hist">
+      <thead><tr><th>Время</th><th>Задание</th><th>Статус</th><th>Длительность</th><th>Примечание</th></tr></thead>
+      <tbody id="histBody"></tbody>
+    </table>
+    <div id="histEmpty" class="muted" style="padding:12px" hidden>Запусков ещё не было.</div>
+  </div>
+</section>
+
+</main>
+
+<footer>backupd — резервное копирование на базе rsync</footer>
+
+<!-- ==================== МОДАЛЬНОЕ ОКНО ЗАДАНИЯ ==================== -->
+<div id="jobModal" class="modal-bg hidden" onclick="if(event.target===this)closeJobForm()">
+  <div class="modal">
+    <h2 id="modalTitle">Новое задание</h2>
+    <div class="grid">
+      <div>
+        <label>Имя задания</label>
+        <input type="text" id="f_name" placeholder="Например: Данные сервера">
+      </div>
+
+      <div class="full">
+        <label>Тип источника</label>
+        <select id="f_stype" onchange="stypeChanged()">
+          <option value="local">Linux — локальный каталог</option>
+          <option value="smb">Windows — общая папка (SMB / CIFS)</option>
+          <option value="ssh">Windows — SSH (DeltaRSync)</option>
+          <option value="rsyncd">Linux — rsync-демон (rsyncd, без SSH)</option>
+          <option value="ftp">FTP-сервер (клиент lftp)</option>
+        </select>
+      </div>
+
+      <!-- источник: локальный -->
+      <div class="full" id="src_local">
+        <div>
+          <label>Каталог источника (Linux)</label>
+          <input type="text" id="f_src_local" class="mono" placeholder="/var/data">
+        </div>
+      </div>
+
+      <!-- источник: SMB -->
+      <div class="full hidden" id="src_smb">
+        <fieldset>
+          <legend>Общая папка Windows (SMB) — источник</legend>
+          <div class="row">
+            <div style="flex:2">
+              <label>Адрес шары (можно с подкаталогом)</label>
+              <input type="text" id="f_src_smb_path" class="mono"
+                     placeholder="//SERVER/Share или //SERVER/Share/subdir">
+            </div>
+            <div>
+              <label>Версия SMB (опц.)</label>
+              <input type="text" id="f_src_smb_vers" class="mono" placeholder="3.0">
+            </div>
+          </div>
+          <div class="row" style="margin-top:10px">
+            <div>
+              <label>Пользователь</label>
+              <input type="text" id="f_src_smb_user">
+            </div>
+            <div>
+              <label>Пароль</label>
+              <input type="password" id="f_src_smb_pass">
+            </div>
+          </div>
+          <div class="hint">Шара будет смонтирована на сервере (cifs), затем скопирована rsync.</div>
+        </fieldset>
+      </div>
+
+      <!-- источник: SSH -->
+      <div class="full hidden" id="src_ssh">
+        <fieldset>
+          <legend>Windows через SSH — источник (OpenSSH Server + DeltaRSync)</legend>
+          <div class="row">
+            <div style="flex:2">
+              <label>Хост (IP или имя)</label>
+              <input type="text" id="f_src_ssh_host" class="mono">
+            </div>
+            <div>
+              <label>Порт</label>
+              <input type="number" id="f_src_ssh_port" value="22">
+            </div>
+            <div>
+              <label>Пользователь</label>
+              <input type="text" id="f_src_ssh_user">
+            </div>
+          </div>
+          <div style="margin-top:10px">
+            <label>Каталог на Windows</label>
+            <input type="text" id="f_src_ssh_path" class="mono" placeholder="D:\Data">
+          </div>
+          <div class="hint">rsync подтянет файлы с Windows по SSH: нужен ключ
+          (<span class="mono">ssh-copy-id user@windows</span>).
+          Одновременно с SSH-целью использовать нельзя (rsync поддерживает
+          только один удалённый конец).</div>
+        </fieldset>
+      </div>
+
+      <!-- источник: rsyncd -->
+      <div class="full hidden" id="src_rsyncd">
+        <fieldset>
+          <legend>rsync-демон (rsyncd) — источник, без SSH</legend>
+          <div class="row">
+            <div style="flex:2">
+              <label>Хост (IP или имя)</label>
+              <input type="text" id="f_src_rsyncd_host" class="mono" placeholder="192.168.1.50">
+            </div>
+            <div>
+              <label>Порт</label>
+              <input type="number" id="f_src_rsyncd_port" value="873">
+            </div>
+            <div>
+              <label>Модуль</label>
+              <input type="text" id="f_src_rsyncd_module" class="mono" placeholder="backup">
+            </div>
+          </div>
+          <div class="row" style="margin-top:10px">
+            <div style="flex:2">
+              <label>Подпуть в модуле (опц.)</label>
+              <input type="text" id="f_src_rsyncd_path" class="mono" placeholder="subdir">
+            </div>
+            <div>
+              <label>Пользователь (опц.)</label>
+              <input type="text" id="f_src_rsyncd_user">
+            </div>
+            <div>
+              <label>Пароль (опц.)</label>
+              <input type="password" id="f_src_rsyncd_pass">
+            </div>
+          </div>
+          <div class="hint">Модуль должен быть определён в
+          <span class="mono">/etc/rsyncd.conf</span> на удалённой машине
+          (порт 873 открыт в firewalld). Протокол не шифрует данные —
+          используйте в доверенной сети.</div>
+        </fieldset>
+      </div>
+
+      <!-- источник: FTP (lftp) -->
+      <div class="full hidden" id="src_ftp">
+        <fieldset>
+          <legend>FTP-сервер — источник (копирование через lftp mirror)</legend>
+          <div class="row">
+            <div style="flex:2">
+              <label>Хост (IP или имя)</label>
+              <input type="text" id="f_src_ftp_host" class="mono" placeholder="192.168.1.50">
+            </div>
+            <div>
+              <label>Порт</label>
+              <input type="number" id="f_src_ftp_port" value="21">
+            </div>
+            <div>
+              <label>Пользователь</label>
+              <input type="text" id="f_src_ftp_user">
+            </div>
+          </div>
+          <div class="row" style="margin-top:10px">
+            <div style="flex:2">
+              <label>Каталог на FTP-сервере</label>
+              <input type="text" id="f_src_ftp_path" class="mono" placeholder="/" title="Пусто — корень FTP-сервера (/)">
+            </div>
+            <div>
+              <label>Пароль</label>
+              <input type="password" id="f_src_ftp_pass">
+            </div>
+          </div>
+          <div class="hint">FTP-сервер запущен на источнике. Копирование
+          выполняется lftp (команда mirror) — всегда одна актуальная копия,
+          без снапшотов. Протокол не шифрует данные — используйте в
+          доверенной сети.</div>
+        </fieldset>
+      </div>
+
+      <div class="full">
+        <label>Тип цели</label>
+        <select id="f_dtype" onchange="dtypeChanged()">
+          <option value="smb">Windows — общая папка (SMB / CIFS)</option>
+          <option value="ssh">Windows — SSH + rsync (DeltaRSync)</option>
+          <option value="rsyncd">Linux — rsync-демон (rsyncd, без SSH)</option>
+          <option value="ftp">FTP-сервер (клиент lftp)</option>
+          <option value="local">Локальный каталог (тестирование)</option>
+        </select>
+      </div>
+
+      <!-- SMB -->
+      <div class="full" id="dst_smb">
+        <fieldset>
+          <legend>Общая папка Windows (SMB)</legend>
+          <div class="row">
+            <div style="flex:2">
+              <label>Адрес шары</label>
+              <input type="text" id="f_smb_path" class="mono" placeholder="//SERVER/Backup или SERVER\Backup">
+            </div>
+            <div>
+              <label>Версия SMB (опц.)</label>
+              <input type="text" id="f_smb_vers" class="mono" placeholder="3.0">
+            </div>
+          </div>
+          <div class="row" style="margin-top:10px">
+            <div>
+              <label>Пользователь</label>
+              <input type="text" id="f_smb_user" placeholder="backup">
+            </div>
+            <div>
+              <label>Пароль</label>
+              <input type="password" id="f_smb_pass" placeholder="••••••••">
+            </div>
+          </div>
+          <div class="hint">На Linux должны быть установлены cifs-utils; служба выполняется от root (или с правами mount).</div>
+        </fieldset>
+      </div>
+
+      <!-- SSH -->
+      <div class="full hidden" id="dst_ssh">
+        <fieldset>
+          <legend>Windows через SSH (нужен OpenSSH Server и DeltaRSync на Windows)</legend>
+          <div class="row">
+            <div style="flex:2">
+              <label>Хост (IP или имя)</label>
+              <input type="text" id="f_ssh_host" class="mono" placeholder="192.168.1.50">
+            </div>
+            <div>
+              <label>Порт</label>
+              <input type="number" id="f_ssh_port" value="22">
+            </div>
+            <div>
+              <label>Пользователь</label>
+              <input type="text" id="f_ssh_user">
+            </div>
+          </div>
+          <div style="margin-top:10px">
+            <label>Каталог на Windows</label>
+            <input type="text" id="f_ssh_path" class="mono" placeholder="C:\Backup">
+          </div>
+          <div class="hint">Для SSH на Linux нужен ключ: <span class="mono">ssh-keygen -t ed25519</span>,
+          затем <span class="mono">ssh-copy-id user@windows</span> (или добавить публичный ключ в %USERPROFILE%\.ssh\authorized_keys).</div>
+        </fieldset>
+      </div>
+
+      <!-- rsyncd -->
+      <div class="full hidden" id="dst_rsyncd">
+        <fieldset>
+          <legend>rsync-демон (rsyncd) — цель, без SSH</legend>
+          <div class="row">
+            <div style="flex:2">
+              <label>Хост (IP или имя)</label>
+              <input type="text" id="f_rsyncd_host" class="mono" placeholder="192.168.1.50">
+            </div>
+            <div>
+              <label>Порт</label>
+              <input type="number" id="f_rsyncd_port" value="873">
+            </div>
+            <div>
+              <label>Модуль</label>
+              <input type="text" id="f_rsyncd_module" class="mono" placeholder="backup">
+            </div>
+          </div>
+          <div class="row" style="margin-top:10px">
+            <div style="flex:2">
+              <label>Подпуть в модуле (опц.)</label>
+              <input type="text" id="f_rsyncd_path" class="mono" placeholder="subdir">
+            </div>
+            <div>
+              <label>Пользователь (опц.)</label>
+              <input type="text" id="f_rsyncd_user">
+            </div>
+            <div>
+              <label>Пароль (опц.)</label>
+              <input type="password" id="f_rsyncd_pass">
+            </div>
+          </div>
+          <div class="hint">Модуль в <span class="mono">/etc/rsyncd.conf</span>
+          должен разрешать запись (<span class="mono">read only = no</span>).
+          Для rsyncd-цели снапшоты всегда полные копии (жёсткие ссылки
+          на удалённой машине недоступны). Протокол не шифрует данные.</div>
+        </fieldset>
+      </div>
+
+      <!-- FTP (lftp) -->
+      <div class="full hidden" id="dst_ftp">
+        <fieldset>
+          <legend>FTP-сервер — цель (копирование через lftp mirror)</legend>
+          <div class="row">
+            <div style="flex:2">
+              <label>Хост (IP или имя)</label>
+              <input type="text" id="f_dst_ftp_host" class="mono" placeholder="192.168.1.50">
+            </div>
+            <div>
+              <label>Порт</label>
+              <input type="number" id="f_dst_ftp_port" value="21">
+            </div>
+            <div>
+              <label>Пользователь</label>
+              <input type="text" id="f_dst_ftp_user">
+            </div>
+          </div>
+          <div class="row" style="margin-top:10px">
+            <div style="flex:2">
+              <label>Каталог на FTP-сервере</label>
+              <input type="text" id="f_dst_ftp_path" class="mono" placeholder="/" title="Пусто — корень FTP-сервера (/)">
+            </div>
+            <div>
+              <label>Пароль</label>
+              <input type="password" id="f_dst_ftp_pass">
+            </div>
+          </div>
+          <div class="hint">Копирование выполняется lftp (команда mirror) —
+          всегда одна актуальная копия, без снапшотов. Протокол не шифрует
+          данные — используйте в доверенной сети.</div>
+        </fieldset>
+      </div>
+
+      <!-- LOCAL -->
+      <div class="full hidden" id="dst_local">
+        <div>
+          <label>Каталог назначения</label>
+          <input type="text" id="f_local_path" class="mono" placeholder="/mnt/backup">
+        </div>
+      </div>
+
+      <div>
+        <label>Режим копирования</label>
+        <select id="f_mode" onchange="modeChanged()">
+          <option value="incremental">Инкрементальный (снапшоты, жёсткие ссылки)</option>
+          <option value="full">Полное (снапшоты без ссылок)</option>
+          <option value="mirror">Зеркало (одна копия)</option>
+        </select>
+      </div>
+      <div id="fullEveryWrap">
+        <label>Полное копирование каждые, дней</label>
+        <input type="number" id="f_fullevery" min="1" value="7">
+        <div class="hint">Для инкрементального режима: раз в N дней снапшот делается полностью (без ссылки на предыдущий).</div>
+      </div>
+
+      <div class="full" id="retWrap">
+        <fieldset>
+          <legend>Удержание снапшотов (что старше — удаляется)</legend>
+          <div class="row">
+            <div><label>Последних снапшотов (всех)</label>
+              <input type="number" id="f_ret_s" min="0" value="7"></div>
+            <div><label>Последних дней (по 1 в день)</label>
+              <input type="number" id="f_ret_d" min="0" value="7"></div>
+            <div><label>Последних недель (по 1 в неделю)</label>
+              <input type="number" id="f_ret_w" min="0" value="4"></div>
+            <div><label>Последних месяцев (по 1 в месяц)</label>
+              <input type="number" id="f_ret_m" min="0" value="6"></div>
+          </div>
+        </fieldset>
+      </div>
+
+      <div>
+        <label>Расписание</label>
+        <select id="f_sched" onchange="schedChanged()">
+          <option value="manual">Вручную (по кнопке)</option>
+          <option value="interval">Каждые N минут</option>
+          <option value="daily">Ежедневно</option>
+          <option value="weekly">Раз в неделю</option>
+        </select>
+      </div>
+      <div id="sched_interval" class="hidden">
+        <label>Интервал, минут</label>
+        <input type="number" id="f_minutes" min="1" value="60">
+      </div>
+      <div id="sched_daily" class="hidden">
+        <label>Время</label>
+        <input type="time" id="f_time" value="02:00">
+      </div>
+      <div id="sched_weekly" class="hidden">
+        <div class="row">
+          <div>
+            <label>День недели</label>
+            <select id="f_weekday">
+              <option value="0">Понедельник</option><option value="1">Вторник</option>
+              <option value="2">Среда</option><option value="3">Четверг</option>
+              <option value="4">Пятница</option><option value="5">Суббота</option>
+              <option value="6">Воскресенье</option>
+            </select>
+          </div>
+          <div><label>Время</label><input type="time" id="f_time_w" value="02:00"></div>
+        </div>
+      </div>
+
+      <div class="full">
+        <label>Исключения (по одному на строку)</label>
+        <textarea id="f_exclude" placeholder="*.tmp&#10;cache/&#10;*.log"></textarea>
+      </div>
+
+      <div class="full">
+        <fieldset>
+          <legend>Дополнительные параметры</legend>
+          <div class="row">
+            <div class="checkbox"><input type="checkbox" id="f_compress" checked>
+              <span>Сжатие при передаче</span></div>
+            <div class="checkbox"><input type="checkbox" id="f_checksum">
+              <span>Проверка контрольных сумм (медленнее)</span></div>
+            <div class="checkbox"><input type="checkbox" id="f_delete">
+              <span>Удалять лишние файлы (только режим «Зеркало»)</span></div>
+          </div>
+          <div class="row" style="margin-top:10px">
+            <div style="max-width:220px">
+              <label>Лимит скорости, КБ/с (0 = без лимита)</label>
+              <input type="number" id="f_bwlimit" min="0" value="0">
+            </div>
+            <div class="checkbox" style="align-self:flex-end; padding-bottom:8px">
+              <input type="checkbox" id="f_enabled" checked><span>Задание включено</span>
+            </div>
+          </div>
+        </fieldset>
+      </div>
+
+      <!-- Настройки lftp (только для FTP-варианта) -->
+      <div class="full hidden" id="lftpWrap">
+        <fieldset>
+          <legend>Настройки lftp (FTP-копирование)</legend>
+          <div class="row">
+            <div>
+              <label>Параллельные потоки (файлов)</label>
+              <input type="number" id="f_lftp_parallel" min="1" max="32" value="4">
+              <div class="hint">Сколько файлов lftp копирует одновременно (mirror --parallel).</div>
+            </div>
+            <div>
+              <label>Потоков на файл (pget)</label>
+              <input type="number" id="f_lftp_pget" min="1" max="16" value="1">
+              <div class="hint">1 = выключено; &gt;1 — каждый файл копируется несколькими соединениями (mirror --use-pget-n).</div>
+            </div>
+          </div>
+          <div class="row" style="margin-top:10px">
+            <div>
+              <label>Буфер передач, КиБ</label>
+              <input type="number" id="f_lftp_buffer" min="0" max="1048576" step="64" value="1024">
+              <div class="hint">xfer:buffer-size. 1024 (1 МБ) — измерено быстрее на мелких файлах; 0 = дефолт lftp (64 КБ).</div>
+            </div>
+            <div class="checkbox" style="align-self:end">
+              <input type="checkbox" id="f_lftp_only_newer" checked>
+              <span>Только новые файлы (mirror --only-newer)</span>
+            </div>
+            <div class="checkbox" style="align-self:end">
+              <input type="checkbox" id="f_lftp_continue">
+              <span>Продолжать незавершённые (сравнение списков, без mirror)</span>
+            </div>
+            <div class="checkbox" style="align-self:end">
+              <input type="checkbox" id="f_lftp_passive" checked>
+              <span>Пассивный режим FTP (ftp:passive-mode)</span>
+            </div>
+          </div>
+          <div class="hint">Лимит скорости для lftp задаётся полем «Лимит скорости, КБ/с» выше.</div>
+        </fieldset>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeJobForm()">Отмена</button>
+      <button class="btn primary" onclick="saveJob()">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================ ВХОД ============================ -->
+<div id="loginScreen" class="login hidden">
+  <div class="login-box">
+    <h1>backupd</h1>
+    <div class="sub muted">Доступ к интерфейсу по паролю</div>
+    <input type="password" id="loginPass" placeholder="Пароль" autocomplete="current-password"
+           onkeydown="if (event.key === 'Enter') doLogin()">
+    <button class="btn primary" onclick="doLogin()">Войти</button>
+    <div id="loginErr" class="login-err" hidden></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+let token = localStorage.getItem("backupd_token") || "";
+let currentTab = "jobs";
+let editingId = null;
+let lastLogLen = 0;
+
+/* ---------------- API ---------------- */
+async function api(path, method = "GET", body) {
+  const headers = {};
+  if (token) headers["Authorization"] = "Bearer " + token;
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  let r;
+  try {
+    r = await fetch(path, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined });
+  } catch (e) {
+    alert("Не удалось подключиться к серверу backupd: " + e);
+    throw e;
+  }
+  if (r.status === 401) {
+    token = ""; localStorage.removeItem("backupd_token");
+    if (document.getElementById("loginScreen").classList.contains("hidden"))
+      showLogin("Требуется вход: сессия истекла или токен отклонён");
+    throw new Error("401");
+  }
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || ("HTTP " + r.status));
+  return data;
+}
+
+/* ---------------- авторизация по паролю ---------------- */
+function showLogin(msg) {
+  const scr = document.getElementById("loginScreen");
+  const first = scr.classList.contains("hidden");
+  scr.classList.remove("hidden");
+  const err = document.getElementById("loginErr");
+  if (msg || first) { err.hidden = !msg; err.textContent = msg || ""; }
+  const p = document.getElementById("loginPass");
+  if (first) p.value = "";  // не стирать пароль, пока пользователь его вводит
+  p.focus();
+}
+function hideLogin() {
+  document.getElementById("loginScreen").classList.add("hidden");
+}
+async function doLogin() {
+  const pw = document.getElementById("loginPass").value;
+  if (!pw) return;
+  try {
+    const r = await fetch("/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: pw })
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || ("HTTP " + r.status));
+    token = data.token;
+    localStorage.setItem("backupd_token", token);
+    hideLogin();
+    refreshStatus(); refreshJobs();
+  } catch (e) {
+    showLogin(e.message === "401" ? "Не удалось подключиться к серверу" : e.message);
+  }
+}
+async function doLogout() {
+  try { await api("/api/logout", "POST", {}); } catch (e) {}
+  token = ""; localStorage.removeItem("backupd_token");
+  showLogin("Вы вышли из интерфейса");
+}
+async function refreshAuth() {
+  try {
+    const headers = {};
+    if (token) headers["Authorization"] = "Bearer " + token;
+    const d = await fetch("/api/auth", { headers }).then(r => r.json().catch(() => ({})));
+    const badge = document.getElementById("authBadge");
+    if (d.auth) {
+      badge.textContent = d.logged_in ? "🔒 авторизован" : "🔒 требуется вход";
+      badge.className = "badge" + (d.logged_in ? " ok" : "");
+      if (!d.logged_in && document.getElementById("loginScreen").classList.contains("hidden"))
+        showLogin();
+    } else {
+      badge.textContent = "открытый доступ (пароль не задан)";
+      badge.className = "badge";
+      hideLogin();
+    }
+  } catch (e) { /* сервер недоступен — api() покажет ошибку */ }
+}
+
+/* ---------------- утилиты ---------------- */
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g,
+    c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+}
+function fmtTs(epoch) {
+  if (!epoch) return "—";
+  const d = new Date(epoch * 1000);
+  return d.toLocaleDateString("ru-RU") + " " + d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+}
+/* короткая форма для табличных ячеек: «13.11 14:35» (год — только
+   если не текущий); полная форма остаётся в подсказке */
+function fmtTsShort(epoch) {
+  if (!epoch) return "—";
+  const d = new Date(epoch * 1000);
+  const p = n => String(n).padStart(2, "0");
+  const y = d.getFullYear();
+  const yy = (y === new Date().getFullYear()) ? "" : "." + String(y).slice(2);
+  return p(d.getDate()) + "." + p(d.getMonth() + 1) + yy + " " + p(d.getHours()) + ":" + p(d.getMinutes());
+}
+function fmtDur(s) {
+  if (s == null) return "—";
+  if (s < 60) return s + " с";
+  return Math.floor(s / 60) + " мин " + Math.round(s % 60) + " с";
+}
+function fmtSize(b) {
+  if (b == null) return "—";
+  if (b > 1024 * 1024 * 1024) return (b / 1073741824).toFixed(2) + " ГБ";
+  if (b > 1024 * 1024) return (b / 1048576).toFixed(1) + " МБ";
+  return (b / 1024).toFixed(0) + " КБ";
+}
+/* текущая длительность выполняющегося прогона: с точностью до
+   секунд пока идёт, в часах — минутами (обновляется опросом 2 с) */
+function fmtElapsed(s) {
+  if (s < 0) s = 0;
+  const sec = Math.floor(s);
+  if (sec < 60) return sec + " с";
+  if (sec < 3600) return Math.floor(sec / 60) + " мин " + (sec % 60) + " с";
+  return Math.floor(sec / 3600) + " ч " + Math.floor(sec % 3600 / 60) + " мин";
+}
+function fmtUptime(s) {
+  const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+  if (d) return d + " д " + h + " ч " + m + " мин";
+  if (h) return h + " ч " + m + " мин";
+  return m + " мин";
+}
+const MODES = { incremental: "инкремент.", full: "полное", mirror: "зеркало" };
+const SCHED = (s) => {
+  if (!s) return "—";
+  if (s.kind === "manual") return "вручную";
+  if (s.kind === "interval") return "каждые " + (s.minutes || 60) + " мин";
+  if (s.kind === "daily") return "ежедневно " + s.time;
+  if (s.kind === "weekly") {
+    const wd = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
+    return "каждый " + (wd[s.weekday] || "") + " " + s.time;
+  }
+  return "—";
+};
+function rsyncdLabel(e) {
+  let p = "rsync://" + (e.user ? e.user + "@" : "") + (e.host || "")
+        + (e.port && e.port != 873 ? ":" + e.port : "") + "/" + (e.module || "");
+  if (e.path) p += "/" + e.path;
+  return "rsyncd " + p;
+}
+function ftpLabel(e) {
+  let p = "ftp://" + (e.user ? e.user + "@" : "") + (e.host || "")
+        + (e.port && e.port != 21 ? ":" + e.port : "");
+  if (e.path) p += "/" + e.path;
+  return "FTP " + p;
+}
+function destLabel(j) {
+  const d = j.destination || {};
+  if (d.type === "smb") return "SMB " + (d.path || "");
+  if (d.type === "ssh") return "SSH " + (d.user || "") + "@" + (d.host || "") + ":" + (d.path || "");
+  if (d.type === "rsyncd") return rsyncdLabel(d);
+  if (d.type === "ftp") return ftpLabel(d);
+  return (d.path || "");
+}
+function srcLabel(j) {
+  const s = typeof j.source === "string" ? { type: "local", path: j.source } : (j.source || {});
+  if (s.type === "smb") return "SMB " + (s.path || "");
+  if (s.type === "ssh") return "SSH " + (s.user || "") + "@" + (s.host || "") + ":" + (s.path || "");
+  if (s.type === "rsyncd") return rsyncdLabel(s);
+  if (s.type === "ftp") return ftpLabel(s);
+  return (s.path || "");
+}
+
+/* ---------------- вкладки ---------------- */
+function switchTab(t) {
+  currentTab = t;
+  const cap = t[0].toUpperCase() + t.slice(1);
+  for (const name of ["Jobs", "Log", "System"])
+    document.getElementById("sec" + name).classList.toggle("hidden", name !== cap);
+  for (const b of ["tabJobs","tabLog","tabSystem"]) document.getElementById(b).classList.remove("active");
+  document.getElementById("tab" + cap).classList.add("active");
+  if (t === "jobs") refreshJobs();
+  if (t === "log") { refreshLogJobs(); refreshLog(true); }
+  if (t === "system") refreshSystem();
+}
+
+/* ---------------- статус ---------------- */
+async function refreshStatus() {
+  try {
+    const s = await api("/api/status");
+    const b = document.getElementById("rsyncBadge");
+    if (s.rsync) { b.textContent = s.rsync.split(/\s+/).slice(0, 3).join(" "); b.className = "badge ok"; }
+    else { b.textContent = "rsync не найден!"; b.className = "badge err"; }
+    // бейдж авторизации обновляет refreshAuth()
+  } catch (e) {}
+}
+
+/* ---------------- задания ---------------- */
+let JOBS = [];
+async function refreshJobs() {
+  try {
+    const d = await api("/api/jobs");
+    JOBS = d.jobs || [];
+    renderJobs();
+  } catch (e) {}
+}
+function renderJobs() {
+  const tb = document.getElementById("jobsBody");
+  document.getElementById("jobsEmpty").hidden = JOBS.length > 0;
+  const rows = [];
+  for (const j of JOBS) {
+    const st = j.state || {};
+    let badge, errTitle = "";
+    if (st.running) {
+      const el = st.started_at
+        ? " " + fmtElapsed(Date.now() / 1000 - st.started_at) : "";
+      badge = '<span class="pill running"><span class="spin">◌</span> выполняется…' + el + "</span>";
+    }
+    else if (st.last_status === "ok") { badge = '<span class="pill ok">успешно</span>'; }
+    else if (st.last_status === "error") { badge = '<span class="pill error">ошибка</span>'; errTitle = ' title="' + esc(st.last_error || "") + '"'; }
+    else if (st.last_status === "stopped") { badge = '<span class="pill stopped">остановлено</span>'; }
+    else badge = '<span class="pill idle">не запускалось</span>';
+    const next = st.running ? "—" : (st.next_run ? fmtTsShort(st.next_run) : "—");
+    // Ячейка «Последний запуск»: бейдж + (в простое) короткая
+    // мета-строка «13.11 14:35 · 1 ч 12 мин · 16,2 ГБ», полные
+    // данные — в подсказке. Прогресс текущего копирования не
+    // влезает в ячейку — показывается отдельной строкой ниже
+    let metaHtml = "";
+    if (!st.running) {
+      const full = st.last_run
+        ? fmtTs(st.last_run)
+          + (st.last_duration != null ? " · длительность " + fmtDur(st.last_duration) : "")
+          + (st.last_size ? " · скопировано " + fmtSize(st.last_size) : "")
+        : "";
+      const short = st.last_run
+        ? fmtTsShort(st.last_run)
+          + (st.last_duration != null ? " · " + fmtUptime(st.last_duration) : "")
+          + (st.last_size ? " · " + fmtSize(st.last_size) : "")
+        : "—";
+      metaHtml = '<div class="pmeta"' + (full ? ' title="' + esc(full) + '"' : "") + ">"
+        + short + "</div>";
+    }
+    rows.push("<tr" + (j.enabled ? "" : ' style="opacity:.55"') + ">" +
+      '<td><input type="checkbox" ' + (j.enabled ? "checked" : "") +
+        ' onchange="toggleJob(\'' + j.id + '\')"></td>' +
+      "<td><b>" + esc(j.name) + "</b></td>" +
+      '<td class="mono path" title="' + esc(srcLabel(j)) + '">' + esc(srcLabel(j)) + "</td>" +
+      '<td class="mono path" title="' + esc(destLabel(j)) + '">' + esc(destLabel(j)) + "</td>" +
+      "<td>" + (MODES[j.mode] || j.mode) + "</td>" +
+      "<td>" + SCHED(j.schedule) + "</td>" +
+      "<td" + errTitle + ">" + badge + metaHtml + "</td>" +
+      "<td class='muted'>" + next + "</td>" +
+      '<td class="actions">' +
+        '<div class="arow">' +
+          '<button class="ibtn" title="Запустить сейчас" ' + (st.running ? "disabled" : "") + ' onclick="runJob(\'' + j.id + '\',false)">▶</button>' +
+          (((j.source && j.source.type === "ftp") || (j.destination && j.destination.type === "ftp"))
+            ? '<button class="ibtn" title="Продолжить после обрыва: сравнение списков (источник − скопировано), недостающие файлы копируются без mirror, обрезанный — заново целиком (остальные опции задания)" ' + (st.running ? "disabled" : "") + ' onclick="runJob(\'' + j.id + '\',false,{continue:true,only_newer:false})">⏩</button>'
+            : "") +
+          '<button class="ibtn" title="Тестовый прогон (dry-run)" ' + (st.running ? "disabled" : "") + ' onclick="runJob(\'' + j.id + '\',true)">🧪</button>' +
+          '<button class="ibtn" title="Остановить" ' + (st.running ? "" : "disabled") + ' onclick="stopJob(\'' + j.id + '\')">⏹</button>' +
+        "</div>" +
+        '<div class="arow">' +
+          '<button class="ibtn" title="Журнал" onclick="openLog(\'' + j.id + '\')">📄</button>' +
+          '<button class="ibtn" title="Изменить" onclick="openJobForm(\'' + j.id + '\')">✎</button>' +
+          '<button class="ibtn" title="Удалить" onclick="delJob(\'' + j.id + '\')">🗑</button>' +
+        "</div>" +
+      "</td></tr>");
+    // прогресс FTP-копирования (state.progress — только во время
+    // прогона) — отдельная строка таблицы под строкой задания
+    const pr = (st.running && st.progress) ? st.progress : null;
+    if (pr) {
+      const pct = (pr.pct != null) ? Math.round(pr.pct) : null;
+      // итог (знаменатель) ещё считается: скан источника идёт
+      // параллельно с копированием; pct null без pending — скан
+      // не удался, показываем только счётчик
+      const note = pct != null ? ""
+        : (pr.total_pending ? " (итог определяется…)"
+           : " (итог не определён)");
+      // скорость и остаток времени считает сервер (state.progress)
+      let extra = "";
+      if (pr.speed != null) {
+        extra = " · " + fmtSize(pr.speed) + "/с";
+        if (pr.eta != null) extra += " · осталось " + fmtDur(pr.eta);
+      }
+      const bar = (pct != null
+        ? '<div class="pbar"><div class="pfill" style="width:' + pct + '%"></div></div>'
+        : "");
+      rows.push('<tr class="progrow"><td colspan="9"><div class="pline">' + bar +
+        '<div class="pmeta">' + (pct != null ? pct + "% · " : "")
+        + pr.done_files + (pr.total_files ? " / " + pr.total_files : "")
+        + " файлов" + note + extra + "</div></div></td></tr>");
+    }
+  }
+  tb.innerHTML = rows.join("");
+  syncFastPoll();
+}
+/* во время выполнения задания обновляем список чаще (2 с),
+   чтобы прогресс FTP-копирования двигался */
+let fastTimer = null;
+function syncFastPoll() {
+  const anyRunning = JOBS.some(j => (j.state || {}).running);
+  if (anyRunning && !fastTimer) {
+    fastTimer = setInterval(() => { if (currentTab === "jobs") refreshJobs(); }, 2000);
+  } else if (!anyRunning && fastTimer) {
+    clearInterval(fastTimer);
+    fastTimer = null;
+  }
+}
+async function runJob(id, dry, lftp) {
+  const body = { dry };
+  if (lftp) body.lftp = lftp;
+  try {
+    await api("/api/jobs/" + id + "/run", "POST", body);
+    setTimeout(refreshJobs, 700);
+  } catch (e) { alert(e.message); }
+}
+async function stopJob(id) {
+  try { await api("/api/jobs/" + id + "/stop", "POST"); } catch (e) { alert(e.message); }
+}
+async function toggleJob(id) {
+  try { await api("/api/jobs/" + id + "/toggle", "POST"); refreshJobs(); } catch (e) { alert(e.message); }
+}
+async function delJob(id) {
+  const j = JOBS.find(x => x.id === id);
+  if (!confirm('Удалить задание «' + (j ? j.name : id) + '»?\nФайлы в месте назначения удалены не будут.')) return;
+  try { await api("/api/jobs/" + id, "DELETE"); refreshJobs(); } catch (e) { alert(e.message); }
+}
+
+/* ---------------- форма задания ---------------- */
+function openJobForm(id) {
+  editingId = id;
+  const j = id ? (JOBS.find(x => x.id === id) || {}) : {};
+  document.getElementById("modalTitle").textContent = id ? "Изменить задание" : "Новое задание";
+  document.getElementById("f_name").value = j.name || "";
+  const s = typeof j.source === "string"
+    ? { type: "local", path: j.source } : (j.source || {});
+  document.getElementById("f_stype").value = s.type || "local";
+  document.getElementById("f_src_local").value = s.path && s.type === "local" ? s.path : "";
+  document.getElementById("f_src_smb_path").value = s.path && s.type === "smb" ? s.path : "";
+  document.getElementById("f_src_smb_vers").value = s.vers || "";
+  document.getElementById("f_src_smb_user").value = s.user || "";
+  document.getElementById("f_src_smb_pass").value = s.password || "";
+  document.getElementById("f_src_ssh_host").value = s.host || "";
+  document.getElementById("f_src_ssh_port").value = s.port || 22;
+  document.getElementById("f_src_ssh_user").value = s.user || "";
+  document.getElementById("f_src_ssh_path").value = s.path && s.type === "ssh" ? s.path : "";
+  document.getElementById("f_src_rsyncd_host").value = s.type === "rsyncd" ? (s.host || "") : "";
+  document.getElementById("f_src_rsyncd_port").value = s.type === "rsyncd" ? (s.port || 873) : 873;
+  document.getElementById("f_src_rsyncd_module").value = s.type === "rsyncd" ? (s.module || "") : "";
+  document.getElementById("f_src_rsyncd_path").value = s.type === "rsyncd" ? (s.path || "") : "";
+  document.getElementById("f_src_rsyncd_user").value = s.type === "rsyncd" ? (s.user || "") : "";
+  document.getElementById("f_src_rsyncd_pass").value = s.type === "rsyncd" ? (s.password || "") : "";
+  document.getElementById("f_src_ftp_host").value = s.type === "ftp" ? (s.host || "") : "";
+  document.getElementById("f_src_ftp_port").value = s.type === "ftp" ? (s.port || 21) : 21;
+  document.getElementById("f_src_ftp_user").value = s.type === "ftp" ? (s.user || "") : "";
+  document.getElementById("f_src_ftp_pass").value = s.type === "ftp" ? (s.password || "") : "";
+  document.getElementById("f_src_ftp_path").value = s.type === "ftp" ? (s.path || "") : "";
+  document.getElementById("f_dtype").value = (j.destination && j.destination.type) || "smb";
+  const d = j.destination || {};
+  document.getElementById("f_smb_path").value = d.path && d.type === "smb" ? d.path : "";
+  document.getElementById("f_smb_vers").value = d.vers || "";
+  document.getElementById("f_smb_user").value = d.user || "";
+  document.getElementById("f_smb_pass").value = d.password || "";
+  document.getElementById("f_ssh_host").value = d.host || "";
+  document.getElementById("f_ssh_port").value = d.port || 22;
+  document.getElementById("f_ssh_user").value = d.user || "";
+  document.getElementById("f_ssh_path").value = d.path || "";
+  document.getElementById("f_rsyncd_host").value = d.type === "rsyncd" ? (d.host || "") : "";
+  document.getElementById("f_rsyncd_port").value = d.type === "rsyncd" ? (d.port || 873) : 873;
+  document.getElementById("f_rsyncd_module").value = d.type === "rsyncd" ? (d.module || "") : "";
+  document.getElementById("f_rsyncd_path").value = d.type === "rsyncd" ? (d.path || "") : "";
+  document.getElementById("f_rsyncd_user").value = d.type === "rsyncd" ? (d.user || "") : "";
+  document.getElementById("f_rsyncd_pass").value = d.type === "rsyncd" ? (d.password || "") : "";
+  document.getElementById("f_dst_ftp_host").value = d.type === "ftp" ? (d.host || "") : "";
+  document.getElementById("f_dst_ftp_port").value = d.type === "ftp" ? (d.port || 21) : 21;
+  document.getElementById("f_dst_ftp_user").value = d.type === "ftp" ? (d.user || "") : "";
+  document.getElementById("f_dst_ftp_pass").value = d.type === "ftp" ? (d.password || "") : "";
+  document.getElementById("f_dst_ftp_path").value = d.type === "ftp" ? (d.path || "") : "";
+  document.getElementById("f_local_path").value = d.path || "";
+  document.getElementById("f_mode").value = j.mode || "incremental";
+  document.getElementById("f_fullevery").value = j.full_every_days || 7;
+  const r = j.retention || {};
+  document.getElementById("f_ret_s").value = r.snapshots != null ? r.snapshots : 7;
+  document.getElementById("f_ret_d").value = r.daily != null ? r.daily : 7;
+  document.getElementById("f_ret_w").value = r.weekly != null ? r.weekly : 4;
+  document.getElementById("f_ret_m").value = r.monthly != null ? r.monthly : 6;
+  const sc = j.schedule || {};
+  document.getElementById("f_sched").value = sc.kind || "manual";
+  document.getElementById("f_minutes").value = sc.minutes || 60;
+  document.getElementById("f_time").value = (sc.kind === "daily") ? (sc.time || "02:00") : "02:00";
+  document.getElementById("f_time_w").value = (sc.kind === "weekly") ? (sc.time || "02:00") : "02:00";
+  document.getElementById("f_weekday").value = sc.weekday != null ? sc.weekday : 0;
+  document.getElementById("f_exclude").value = (j.exclude || []).join("\n");
+  const o = j.options || {};
+  document.getElementById("f_compress").checked = o.compress !== false;
+  document.getElementById("f_checksum").checked = !!o.checksum;
+  document.getElementById("f_delete").checked = !!o.delete;
+  document.getElementById("f_bwlimit").value = o.bwlimit || 0;
+  document.getElementById("f_enabled").checked = j.enabled !== false;
+  const lf = j.lftp || {};
+  document.getElementById("f_lftp_parallel").value = lf.parallel != null ? lf.parallel : 4;
+  document.getElementById("f_lftp_pget").value = lf.pget != null ? lf.pget : 1;
+  document.getElementById("f_lftp_buffer").value = lf.buffer != null ? lf.buffer : 1024;
+  document.getElementById("f_lftp_only_newer").checked = lf.only_newer !== false;
+  document.getElementById("f_lftp_continue").checked = lf.continue === true;
+  document.getElementById("f_lftp_passive").checked = lf.passive !== false;
+  stypeChanged(); dtypeChanged(); modeChanged(); schedChanged();
+  document.getElementById("jobModal").classList.remove("hidden");
+}
+function closeJobForm() { document.getElementById("jobModal").classList.add("hidden"); }
+function stypeChanged() {
+  const t = document.getElementById("f_stype").value;
+  document.getElementById("src_local").classList.toggle("hidden", t !== "local");
+  document.getElementById("src_smb").classList.toggle("hidden", t !== "smb");
+  document.getElementById("src_ssh").classList.toggle("hidden", t !== "ssh");
+  document.getElementById("src_rsyncd").classList.toggle("hidden", t !== "rsyncd");
+  document.getElementById("src_ftp").classList.toggle("hidden", t !== "ftp");
+  updateFtpMode();
+}
+function dtypeChanged() {
+  const t = document.getElementById("f_dtype").value;
+  document.getElementById("dst_smb").classList.toggle("hidden", t !== "smb");
+  document.getElementById("dst_ssh").classList.toggle("hidden", t !== "ssh");
+  document.getElementById("dst_rsyncd").classList.toggle("hidden", t !== "rsyncd");
+  document.getElementById("dst_ftp").classList.toggle("hidden", t !== "ftp");
+  document.getElementById("dst_local").classList.toggle("hidden", t !== "local");
+  updateFtpMode();
+}
+// FTP (lftp) — всегда одна актуальная копия (режим «Зеркало»);
+// показываем меню настроек lftp, если хотя бы один конец — FTP
+function updateFtpMode() {
+  const on = document.getElementById("f_stype").value === "ftp" ||
+             document.getElementById("f_dtype").value === "ftp";
+  const sel = document.getElementById("f_mode");
+  sel.disabled = on;
+  if (on) sel.value = "mirror";
+  document.getElementById("lftpWrap").classList.toggle("hidden", !on);
+  modeChanged();
+}
+function modeChanged() {
+  const m = document.getElementById("f_mode").value;
+  document.getElementById("retWrap").classList.toggle("hidden", m === "mirror");
+  document.getElementById("fullEveryWrap").classList.toggle("hidden", m !== "incremental");
+}
+function schedChanged() {
+  const k = document.getElementById("f_sched").value;
+  document.getElementById("sched_interval").classList.toggle("hidden", k !== "interval");
+  document.getElementById("sched_daily").classList.toggle("hidden", k !== "daily");
+  document.getElementById("sched_weekly").classList.toggle("hidden", k !== "weekly");
+}
+async function saveJob() {
+  const t = document.getElementById("f_dtype").value;
+  const s = document.getElementById("f_sched").value;
+  const st = document.getElementById("f_stype").value;
+  const job = {
+    id: editingId,
+    name: document.getElementById("f_name").value,
+    source: {
+      type: st,
+      path: st === "local" ? document.getElementById("f_src_local").value
+           : st === "smb" ? document.getElementById("f_src_smb_path").value
+           : st === "ssh" ? document.getElementById("f_src_ssh_path").value
+           : st === "ftp" ? document.getElementById("f_src_ftp_path").value
+           : document.getElementById("f_src_rsyncd_path").value,
+      user: st === "smb" ? document.getElementById("f_src_smb_user").value
+           : st === "ssh" ? document.getElementById("f_src_ssh_user").value
+           : st === "rsyncd" ? document.getElementById("f_src_rsyncd_user").value
+           : st === "ftp" ? document.getElementById("f_src_ftp_user").value : "",
+      password: st === "smb" ? document.getElementById("f_src_smb_pass").value
+               : st === "rsyncd" ? document.getElementById("f_src_rsyncd_pass").value
+               : st === "ftp" ? document.getElementById("f_src_ftp_pass").value : "",
+      vers: document.getElementById("f_src_smb_vers").value,
+      host: st === "ssh" ? document.getElementById("f_src_ssh_host").value
+           : st === "rsyncd" ? document.getElementById("f_src_rsyncd_host").value
+           : st === "ftp" ? document.getElementById("f_src_ftp_host").value : "",
+      port: st === "ssh" ? document.getElementById("f_src_ssh_port").value
+           : st === "rsyncd" ? document.getElementById("f_src_rsyncd_port").value
+           : st === "ftp" ? document.getElementById("f_src_ftp_port").value : "",
+      module: st === "rsyncd" ? document.getElementById("f_src_rsyncd_module").value : "",
+    },
+    destination: {
+      type: t,
+      path: t === "smb" ? document.getElementById("f_smb_path").value
+           : t === "ssh" ? document.getElementById("f_ssh_path").value
+           : t === "rsyncd" ? document.getElementById("f_rsyncd_path").value
+           : t === "ftp" ? document.getElementById("f_dst_ftp_path").value
+           : document.getElementById("f_local_path").value,
+      user: t === "smb" ? document.getElementById("f_smb_user").value
+           : t === "ssh" ? document.getElementById("f_ssh_user").value
+           : t === "rsyncd" ? document.getElementById("f_rsyncd_user").value
+           : t === "ftp" ? document.getElementById("f_dst_ftp_user").value : "",
+      password: t === "smb" ? document.getElementById("f_smb_pass").value
+               : t === "rsyncd" ? document.getElementById("f_rsyncd_pass").value
+               : t === "ftp" ? document.getElementById("f_dst_ftp_pass").value : "",
+      vers: document.getElementById("f_smb_vers").value,
+      host: t === "ssh" ? document.getElementById("f_ssh_host").value
+           : t === "rsyncd" ? document.getElementById("f_rsyncd_host").value
+           : t === "ftp" ? document.getElementById("f_dst_ftp_host").value : "",
+      port: t === "ssh" ? document.getElementById("f_ssh_port").value
+           : t === "rsyncd" ? document.getElementById("f_rsyncd_port").value
+           : t === "ftp" ? document.getElementById("f_dst_ftp_port").value : "",
+      module: t === "rsyncd" ? document.getElementById("f_rsyncd_module").value : "",
+    },
+    mode: document.getElementById("f_mode").value,
+    full_every_days: parseInt(document.getElementById("f_fullevery").value || "7"),
+    retention: {
+      snapshots: parseInt(document.getElementById("f_ret_s").value || "0"),
+      daily: parseInt(document.getElementById("f_ret_d").value || "0"),
+      weekly: parseInt(document.getElementById("f_ret_w").value || "0"),
+      monthly: parseInt(document.getElementById("f_ret_m").value || "0"),
+    },
+    schedule: {
+      kind: s,
+      minutes: parseInt(document.getElementById("f_minutes").value || "60"),
+      time: s === "weekly" ? document.getElementById("f_time_w").value : document.getElementById("f_time").value,
+      weekday: parseInt(document.getElementById("f_weekday").value || "0"),
+    },
+    exclude: document.getElementById("f_exclude").value,
+    options: {
+      compress: document.getElementById("f_compress").checked,
+      checksum: document.getElementById("f_checksum").checked,
+      delete: document.getElementById("f_delete").checked,
+      bwlimit: parseInt(document.getElementById("f_bwlimit").value || "0"),
+    },
+    lftp: {
+      parallel: parseInt(document.getElementById("f_lftp_parallel").value || "4"),
+      pget: parseInt(document.getElementById("f_lftp_pget").value || "1"),
+      buffer: parseInt(document.getElementById("f_lftp_buffer").value || "1024"),
+      only_newer: document.getElementById("f_lftp_only_newer").checked,
+      continue: document.getElementById("f_lftp_continue").checked,
+      passive: document.getElementById("f_lftp_passive").checked,
+    },
+    enabled: document.getElementById("f_enabled").checked,
+  };
+  try {
+    if (editingId) await api("/api/jobs/" + editingId, "PUT", job);
+    else await api("/api/jobs", "POST", job);
+    closeJobForm();
+    refreshJobs();
+  } catch (e) { alert(e.message); }
+}
+
+/* ---------------- журнал ---------------- */
+function refreshLogJobs() {
+  const sel = document.getElementById("logJob");
+  const cur = sel.value;
+  sel.innerHTML = JOBS.map(j =>
+    '<option value="' + j.id + '">' + esc(j.name) + "</option>").join("");
+  if (cur && JOBS.some(j => j.id === cur)) sel.value = cur;
+}
+async function refreshLog(force) {
+  const id = document.getElementById("logJob").value;
+  const view = document.getElementById("logView");
+  if (!id) return;
+  try {
+    const d = await api("/api/jobs/" + id + "/log?tail=600");
+    const atBottom = view.scrollHeight - view.scrollTop - view.clientHeight < 40;
+    if (force || d.log.length !== lastLogLen || atBottom) {
+      view.textContent = d.log || "(журнал пуст)";
+      lastLogLen = d.log.length;
+      view.scrollTop = view.scrollHeight;
+    }
+  } catch (e) {}
+}
+function logJobChanged() { lastLogLen = 0; refreshLog(true); }
+function openLog(id) {
+  switchTab("log");
+  document.getElementById("logJob").value = id;
+  lastLogLen = 0;
+  refreshLog(true);
+}
+
+/* ---------------- система ---------------- */
+async function refreshSystem() {
+  try {
+    const s = await api("/api/status");
+    document.getElementById("sVer").textContent = s.version;
+    document.getElementById("sRsync").textContent = s.rsync || "НЕ НАЙДЕН";
+    const lf = document.getElementById("sLftp");
+    lf.textContent = s.lftp || "НЕ НАЙДЕН (нужен для FTP-заданий)";
+    lf.classList.toggle("muted", !!s.lftp);
+    document.getElementById("sPy").textContent = s.python;
+    document.getElementById("sUp").textContent = fmtUptime(s.uptime);
+    document.getElementById("sData").textContent = s.data_dir;
+    document.getElementById("sJobs").textContent = s.jobs;
+    document.getElementById("sSudo").textContent =
+      s.mount_sudo ? "через sudo (--use-sudo)" : "без sudo (нужны root-права или --use-sudo)";
+    const fm = document.getElementById("sFusermount");
+    fm.textContent = s.fusermount
+      ? `${s.fusermount}, резервно — umount`
+      : "НЕ НАЙДЕН (нужен fuse/fuse3, иначе только umount)";
+    fm.classList.toggle("muted", !!s.fusermount);
+    const ts = document.getElementById("tokenState");
+    if (s.auth) { ts.textContent = "пароль задан (авторизация включена)"; ts.className = "pill ok"; }
+    else { ts.textContent = "не задан (открытый доступ)"; ts.className = "pill error"; }
+    document.getElementById("tokenOffBtn").style.visibility = s.auth ? "visible" : "hidden";
+    document.getElementById("logoutBtn").style.visibility = s.auth ? "visible" : "hidden";
+  } catch (e) {}
+  try {
+    const h = (await api("/api/history")).history || [];
+    const tb = document.getElementById("histBody");
+    document.getElementById("histEmpty").hidden = h.length > 0;
+    tb.innerHTML = h.slice(0, 50).map(x => {
+      const p = x.status === "ok" ? '<span class="pill ok">успешно</span>'
+               : x.status === "stopped" ? '<span class="pill stopped">остановлено</span>'
+               : '<span class="pill error">ошибка</span>';
+      return "<tr><td>" + fmtTs(x.ts) + "</td><td>" + esc(x.job) + "</td><td>" + p +
+        "</td><td>" + fmtDur(x.duration) + "</td><td class='muted'>" +
+        (x.dry ? "тестовый прогон" : "") + (x.error ? " — " + esc(x.error) : "") + "</td></tr>";
+    }).join("");
+  } catch (e) {}
+  loadNotify();
+}
+
+/* ---------------- push-уведомления (ntfy) ---------------- */
+function setNotifyState(text, cls) {
+  const el = document.getElementById("notifyState");
+  el.textContent = text;
+  el.className = "pill " + (cls || "idle");
+}
+async function loadNotify() {
+  try {
+    const d = await api("/api/notify");
+    const n = d.notify || {};
+    document.getElementById("n_url").value = n.url || "https://ntfy.sh";
+    document.getElementById("n_topic").value = n.topic || "";
+    document.getElementById("n_enabled").checked = !!n.enabled;
+    setNotifyState(n.enabled ? "включены" : "выключены",
+                   n.enabled ? "ok" : "idle");
+  } catch (e) {}
+}
+function notifyForm() {
+  return {
+    enabled: document.getElementById("n_enabled").checked,
+    url: document.getElementById("n_url").value.trim(),
+    topic: document.getElementById("n_topic").value.trim(),
+  };
+}
+async function saveNotify() {
+  try {
+    const d = await api("/api/notify", "POST", notifyForm());
+    document.getElementById("n_topic").value = (d.notify || {}).topic || "";
+    const en = (d.notify || {}).enabled;
+    setNotifyState(en ? "включены (сохранено)" : "выключены (сохранено)",
+                   en ? "ok" : "idle");
+  } catch (e) {
+    setNotifyState("ошибка: " + e.message, "error");
+  }
+}
+async function testNotify() {
+  setNotifyState("отправляю тест…", "running");
+  try {
+    const sv = await api("/api/notify", "POST", notifyForm());
+    const en = (sv.notify || {}).enabled;
+    const d = await api("/api/notify/test", "POST", {});
+    setNotifyState(d.ok ? "тест отправлен ✓" : "ошибка: " + (d.error || ""),
+                   d.ok ? "ok" : "error");
+    if (!en) setNotifyState("тест отправлен, уведомления выключены", "stopped");
+  } catch (e) {
+    setNotifyState("ошибка: " + e.message, "error");
+  }
+}
+async function setPassword() {
+  const pw = prompt("Введите новый пароль (минимум 4 символа):");
+  if (pw == null) return;
+  if (pw.length < 4) { alert("Пароль должен быть не короче 4 символов"); return; }
+  const pw2 = prompt("Повторите пароль:");
+  if (pw !== pw2) { alert("Пароли не совпадают"); return; }
+  try {
+    await api("/api/password", "POST", { password: pw });
+    alert("Пароль установлен. Теперь для входа в интерфейс он потребуется.");
+    refreshAuth(); refreshSystem(); refreshStatus();
+  } catch (e) { alert(e.message); }
+}
+async function clearPassword() {
+  if (!confirm("Отключить авторизацию? Интерфейс будет доступен без пароля " +
+               "всем, кто может подключиться к серверу.")) return;
+  try {
+    await api("/api/password/clear", "POST", {});
+    token = ""; localStorage.removeItem("backupd_token");
+    refreshAuth(); refreshSystem(); refreshStatus();
+  } catch (e) { alert(e.message); }
+}
+
+/* ---------------- автообновление ---------------- */
+async function tick() {
+  await refreshAuth();
+  await refreshStatus();
+  if (currentTab === "jobs") refreshJobs();
+  if (currentTab === "log") refreshLog(false);
+}
+setInterval(tick, 5000);
+tick();
+
+switchTab("jobs");
+</script>
+</body>
+</html>

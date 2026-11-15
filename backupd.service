@@ -1,0 +1,20 @@
+# backupd — служба systemd
+# Установка:
+#   cp backupd.service /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now backupd
+#
+# Служба выполняется от root — это нужно для `mount -t cifs` (SMB-цели).
+# Запуск без root: см. README.md, раздел «Запуск без root».
+
+[Unit]
+Description=backupd - file backup server (rsync + lftp, HTML GUI)
+After=network-online.target
+
+[Service]
+# флаг -v — подробный вывод в журнал (journalctl -u backupd -f)
+ExecStart=/usr/bin/python3 /opt/backupd/backupd.py --port 8420 --data-dir /var/lib/backupd -v
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
