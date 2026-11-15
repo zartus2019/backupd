@@ -119,6 +119,11 @@ class Config:
         self.data.setdefault("auth_token", "")
         self.data.setdefault("password_hash", "")
         self.data.setdefault("jobs", [])
+        # язык интерфейса: ru (по умолчанию) или en; выбирается в GUI
+        # (вкладка «Система»), сохраняется здесь и применяется к HTML
+        # UI language: ru (default) or en; chosen in the GUI (System
+        # tab), stored here and applied to the HTML interface
+        self.data.setdefault("lang", "ru")
         # push-уведомления (ntfy): включены/выключены, адрес сервера
         # (публичный ntfy.sh или свой в локальной сети), топик — случайный,
         # его нужно вписать в приложение-клиент на устройстве
@@ -3449,10 +3454,15 @@ class Api(BaseHTTPRequestHandler):
         if path == "/api/auth":
             # Публичный: позволяет интерфейсу решить, показывать ли
             # экран входа (без токена — только факт включения пароля)
+            # Public: lets the GUI decide whether to show the login
+            # screen (without a token — only the fact that a password
+            # is set). lang — язык интерфейса, нужен до входа
+            # (lang — UI language, needed before login).
             return self._send(200, {
                 "auth": bool(CONFIG.data.get("password_hash")
                              or CONFIG.data.get("auth_token")),
                 "logged_in": self._auth_ok(),
+                "lang": CONFIG.data.get("lang") or "ru",
             })
         if not self._auth_ok():
             return self._send(401, {"error": "Требуется авторизация"})
@@ -3528,6 +3538,20 @@ class Api(BaseHTTPRequestHandler):
             CONFIG.save()
             clog("INFO", "Авторизация интерфейса отключена")
             return self._send(200, {"auth": False})
+
+        # --- язык интерфейса (UI language) ---
+        # --- UI language ---
+        if path == "/api/lang":
+            lang = str(body.get("lang") or "")
+            # Язык: только ru или en (ключи словаря в web/index.html)
+            # Language: only ru or en (keys of the dictionary in
+            # web/index.html)
+            if lang not in ("ru", "en"):
+                return self._send(400, {"error": "Язык: ru или en"})
+            CONFIG.data["lang"] = lang
+            CONFIG.save()
+            clog("INFO", f"Язык интерфейса изменён: {lang}")
+            return self._send(200, {"lang": lang})
 
         # --- push-уведомления (ntfy) ---
 
