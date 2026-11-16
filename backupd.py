@@ -24,6 +24,30 @@ backupd — сервер резервного копирования файло�
   # (lftp при этом запускается с --verbose=2 — только чтобы по выводу
   # считать процент прогресса копирования для GUI),
   # с -v — только директорные, с -vv — и файловые
+
+ backupd — an rsync-based file backup server.
+
+ The source is a Linux server, the destination is a Windows machine
+ (SMB share or SSH + rsync), or a local directory (for testing).
+
+ Features (similar to rsnapshot / backupninja):
+   * incremental snapshots via rsync --link-dest (hard links);
+   * modes: incremental, full, mirror;
+   * schedule: manual / every N minutes / daily / once a week;
+   * retention policies (last N days / weeks / months);
+   * excluded files, compression, speed limit, checksum verification;
+   * HTML interface for managing jobs and viewing the log.
+
+ Running:
+   python3 backupd.py --port 8420 --data-dir /var/lib/backupd
+   python3 backupd.py -v          # verbose console logging
+   python3 backupd.py -vv         # maximum detail (HTTP, state)
+   # -v / -vv also enable verbose FTP logging to the job log:
+   # pre-check details (DNS, TCP, banner) and lftp connection protocol;
+   # detailed mirror operations: without the keys they are not written
+   # to the job log (lftp is still launched with --verbose=2 — just to
+   # parse the copy progress percentage for the GUI from the output),
+   # with -v — directory-level only, with -vv — file-level too
 """
 
 import argparse
@@ -58,21 +82,28 @@ TS_FMT = "%Y%m%d_%H%M%S"
 SNAP_RE = re.compile(r"^\d{8}_\d{6}$")
 
 DATA_DIR = None   # устанавливается в main()
+# set in main()
 CONFIG = None
 STATE = None
 START_TIME = time.time()
 RUNNING = {}      # job_id -> Popen
 RUN_LOCKS = {}    # job_id -> threading.Lock
 MOUNT_LOCKS = {}  # mount_id -> threading.Lock (последовательные mount на одну точку)
+# mount_id -> threading.Lock (sequential mounts on a single point)
 VERBOSE = 0       # логирование в консоль: 0 — выкл, 1 — -v, 2 — -vv
+# console logging: 0 — off, 1 — -v, 2 — -vv
 SUDO = []         # ["sudo"], если сервер запущен с --use-sudo
+# ["sudo"] if the server is started with --use-sudo
 
 SESSIONS = {}     # токен сессии -> время истечения (epoch)
+# session token -> expiration time (epoch)
 SESSION_TTL = 12 * 3600  # срок действия сессии, с (12 часов)
+# session lifetime, seconds (12 hours)
 
 
 def hash_password(pw, salt=None):
-    """Хеш пароля (scrypt, стандартная библиотека). Формат: соль$хеш (hex)."""
+    """Хеш пароля (scrypt, стандартная библиотека). Формат: соль$хеш (hex).
+    Password hash (scrypt, standard library). Format: salt$hash (hex)."""
     salt = salt or os.urandom(16)
     h = hashlib.scrypt(pw.encode("utf-8"), salt=salt, n=16384, r=8, p=1)
     return salt.hex() + "$" + h.hex()
@@ -92,6 +123,10 @@ def clog(level, msg):
     """Выводит сообщение в консоль (только при запуске с -v / -vv).
 
     Уровни: DEBUG — только при -vv; INFO / WARN / ERROR / JOB — при -v.
+
+    Prints a message to the console (only when run with -v / -vv).
+
+    Levels: DEBUG — only with -vv; INFO / WARN / ERROR / JOB — with -v.
     """
     if VERBOSE == 0:
         return
@@ -104,6 +139,7 @@ def clog(level, msg):
 
 # --------------------------------------------------------------------------
 # Конфигурация
+# Configuration
 # --------------------------------------------------------------------------
 
 class Config:
@@ -127,6 +163,9 @@ class Config:
         # push-уведомления (ntfy): включены/выключены, адрес сервера
         # (публичный ntfy.sh или свой в локальной сети), топик — случайный,
         # его нужно вписать в приложение-клиент на устройстве
+        # push notifications (ntfy): enabled/disabled, server address
+        # (public ntfy.sh or your own on the local network), topic is random,
+        # it must be entered in the client app on the device
         nt = self.data.setdefault("notify", {})
         nt.setdefault("enabled", False)
         nt.setdefault("url", "https://ntfy.sh")
@@ -174,6 +213,7 @@ class Config:
 
 # --------------------------------------------------------------------------
 # Состояние (последний запуск, следующий запуск, история)
+# State (last run, next run, history)
 # --------------------------------------------------------------------------
 
 class State:
@@ -202,11 +242,14 @@ class State:
             return self.data["jobs"].setdefault(job_id, {
                 "running": False,
                 "started_at": None,     # epoch: начало текущего прогона
+                # epoch: start of the current run
                 "last_run": None,
                 "last_status": None,     # ok | error
                 "last_error": None,
                 "last_duration": None,   # секунды
+                # seconds
                 "last_size": None,       # байты
+                # bytes
                 "next_run": None,        # epoch
             })
 
@@ -224,6 +267,7 @@ class State:
 
 # --------------------------------------------------------------------------
 # Журнал задания
+# Job log
 # --------------------------------------------------------------------------
 
 class JobLog:
@@ -242,6 +286,7 @@ class JobLog:
             with self.path.open("a", encoding="utf-8") as f:
                 f.write(line + "\n")
         # зеркалируем строку в консоль (при -v) — без дубля таймстампа
+        # mirror the line to the console (with -v) — without the timestamp twice
         clog("JOB", f"[{self.label}] {line[len('[%s] ' % ts):]}")
 
     def tail(self, n=400):
@@ -258,6 +303,7 @@ def job_log(job_id, name=None):
 
 # --------------------------------------------------------------------------
 # Цели копирования
+# Copy destinations
 # --------------------------------------------------------------------------
 
 def parse_smb(p):
@@ -265,6 +311,11 @@ def parse_smb(p):
 
     Возвращает (share, subpath): share — //сервер/шара (для mount),
     subpath — путь внутри шары (без ведущего '/'), может быть пустым.
+
+    Parses an SMB share address.
+
+    Returns (share, subpath): share is //server/share (for mounting),
+    subpath is the path inside the share (no leading '/'), may be empty.
     """
     p = p.strip()
     if p.lower().startswith("smb://"):
@@ -281,7 +332,8 @@ def parse_smb(p):
 
 
 def win_quote(p):
-    """Кавычки для cmd.exe (удалённый shell на Windows при SSH)."""
+    """Кавычки для cmd.exe (удалённый shell на Windows при SSH).
+    Quotes for cmd.exe (the remote shell on Windows over SSH)."""
     return '"' + p.replace('"', '\\"') + '"'
 
 
@@ -294,7 +346,8 @@ def ssh_argv(end):
 
 
 def ssh_source_arg(src):
-    """Аргумент удалённого источника для rsync (Windows через SSH)."""
+    """Аргумент удалённого источника для rsync (Windows через SSH).
+    Remote source argument for rsync (Windows over SSH)."""
     path = src.get("path", "").rstrip("\\/")
     return f"{src['user']}@{src['host']}:{path}/"
 
@@ -303,6 +356,10 @@ def rsyncd_spec(end, sub=""):
     """Адрес rsyncd-конца: rsync://[user@]host[:port]/module[/подпуть].
 
     Порт указывается только если отличается от стандартного 873.
+
+    rsyncd endpoint address: rsync://[user@]host[:port]/module[/subpath].
+
+    The port is specified only if it differs from the standard 873.
     """
     user = (end.get("user") or "").strip()
     port = _to_int(end.get("port"), 873)
@@ -324,6 +381,13 @@ def ftp_url(end, subpath="", with_password=True):
     Имя пользователя, пароль и путь экранируются (URL-encoding),
     чтобы специальные символы не ломали адрес. with_password=False —
     для отображения (пароль в адрес не подставляется).
+
+    FTP endpoint address: ftp://[user[:pass]@]host[:port]/path.
+
+    The port is specified only if it differs from the standard 21.
+    The username, password and path are escaped (URL-encoding)
+    so that special characters do not break the address. with_password=False —
+    for display only (the password is not inserted into the address).
     """
     from urllib.parse import quote
     host = (end.get("host") or "").strip()
@@ -348,12 +412,16 @@ def ftp_url(end, subpath="", with_password=True):
         # явный корень «/»: без пути в URL lftp не подключается к
         # хосту («mirror: Not connected») и использует домашний
         # каталог пользователя, а не корень FTP-сервера
+        # explicit root "/": without a path in the URL lftp does not
+        # connect to the host ("mirror: Not connected") and uses the
+        # user's home directory instead of the FTP server root
         url += "/"
     return url
 
 
 def mask_ftp_password(url):
-    """Замаскирует пароль в ftp://-адресе (для журнала)."""
+    """Замаскирует пароль в ftp://-адресе (для журнала).
+    Masks the password in an ftp:// address (for the log)."""
     if not url.startswith("ftp://"):
         return url
     return re.sub(r"://([^:/@]+):[^@]*@", r"://\1:***@", url)
@@ -365,6 +433,12 @@ def ftp_safe_script(script, mopts_log):
     Строка mirror в сценарии заменяется на mopts_log — версию
     с замаскированным паролем (см. mask_ftp_password). Остальные
     строки (set ...) пароля не содержат и сохраняются как есть.
+
+    A copy of the lftp script without the password (for storage/diagnostics).
+
+    The mirror line in the script is replaced with mopts_log — the
+    version with the masked password (see mask_ftp_password). The other
+    lines (set ...) do not contain the password and are kept as is.
     """
     out, replaced = [], False
     for ln in script:
@@ -413,7 +487,8 @@ def dest_label(job):
 
 
 class LocalDest:
-    """Локальный каталог (включая смонтированную SMB-шару)."""
+    """Локальный каталог (включая смонтированную SMB-шару).
+    Local directory (including a mounted SMB share)."""
     kind = "local"
 
     def __init__(self, root: Path):
@@ -451,6 +526,11 @@ class SshDest:
 
     Удалённый shell — cmd.exe, поэтому служебные команды
     (mkdir / dir / rmdir) выполняются в Windows-синтаксисе.
+
+    A Windows machine over SSH (OpenSSH Server + DeltaRSync).
+
+    The remote shell is cmd.exe, so the utility commands
+    (mkdir / dir / rmdir) are executed in Windows syntax.
     """
     kind = "ssh"
 
@@ -477,6 +557,7 @@ class SshDest:
 
     def mkdir(self, rel):
         # cmd.exe: mkdir сам создаёт вложенные каталоги
+        # cmd.exe: mkdir creates nested directories by itself
         self._run("mkdir " + win_quote(self._p(rel)))
 
     def listdir(self, rel):
@@ -490,6 +571,7 @@ class SshDest:
 
     def size(self, rel):
         return None  # du на Windows недоступен
+        # du is not available on Windows
 
 
 class RsyncdDest:
@@ -499,6 +581,14 @@ class RsyncdDest:
     создаёт приёмник (демон) при копировании, поэтому mkdir не нужен.
     Жёсткие ссылки (--link-dest) на удалённом конце недоступны —
     снапшоты для такой цели всегда полные копии.
+
+    A remote destination — the rsync daemon (rsyncd) without SSH.
+
+    Address: rsync://[user@]host[:port]/module[/subpath]. The snapshot
+    directory is created by the receiver (the daemon) during the copy,
+    so mkdir is not needed. Hard links (--link-dest) are not available
+    on the remote end — snapshots for such a destination are always
+    full copies.
     """
     kind = "rsyncd"
 
@@ -506,6 +596,7 @@ class RsyncdDest:
         self.dest = dest
         self.base = (dest.get("path") or "").strip().strip("/")
         self.passfile = passfile  # Path к временному файлу пароля (или None)
+        # Path to the temporary password file (or None)
 
     def _sub(self, rel):
         rel = (rel or "").strip("/")
@@ -528,11 +619,16 @@ class RsyncdDest:
 
     def mkdir(self, rel):
         pass  # приёмник rsyncd создаёт каталог назначения сам
+        # the rsyncd receiver creates the destination directory itself
 
     def _listonly(self, spec, timeout=120):
         """Список записей каталога через `rsync --list-only`.
 
         Имена каталогов возвращаются с завершающим '/'.
+
+        Directory listing via `rsync --list-only`.
+
+        Directory names are returned with a trailing '/'.
         """
         try:
             r = subprocess.run(
@@ -555,6 +651,8 @@ class RsyncdDest:
     def listdir(self, rel):
         # пустые каталоги (остатки удалённых снапшотов) не учитываем:
         # rsyncd не умеет удалять сам каталог, только его содержимое
+        # empty directories (leftovers of deleted snapshots) are ignored:
+        # rsyncd cannot delete the directory itself, only its contents
         out = []
         for n in self._listonly(self._spec(rel)):
             if n.endswith("/"):
@@ -567,6 +665,9 @@ class RsyncdDest:
     def rmtree(self, rel):
         # удалённого rmdir нет: синхронизируем пустой каталог с --delete —
         # приёмник удалит всё содержимое цели (каталог останется пустым)
+        # there is no remote rmdir: we sync an empty directory with --delete —
+        # the receiver will delete all contents of the destination
+        # (the directory itself will remain, empty)
         try:
             empty = DATA_DIR / "rsyncd-empty"
             empty.mkdir(parents=True, exist_ok=True)
@@ -581,9 +682,11 @@ class RsyncdDest:
                 capture_output=True, text=True, timeout=600)
         except Exception:
             pass  # удаление снапшотов — не критично для самого бэкапа
+            # deleting snapshots is not critical for the backup itself
 
     def size(self, rel):
         return None  # размер по rsyncd не определяется
+        # size cannot be determined over rsyncd
 
 
 # --------------------------------------------------------------------------
@@ -606,9 +709,15 @@ def check_smb_server(share: str, vers: str):
 
     Возвращает (ok, err, target): target — «хост:порт»,
     err — человекочитаемая причина недоступности (на русском).
+
+    Pre-mount availability check of the SMB server (TCP).
+
+    Returns (ok, err, target): target is "host:port",
+    err is a human-readable reason for unavailability (in Russian).
     """
     host = share[2:].split("/")[0] if share.startswith("//") else share
     # SMB1 (vers=1.x) использует порт 139, SMB2/3 — 445
+    # SMB1 (vers=1.x) uses port 139, SMB2/3 use 445
     port = 139 if str(vers or "").startswith("1") else 445
     target = f"{host}:{port}"
     try:
@@ -622,6 +731,7 @@ def check_smb_server(share: str, vers: str):
                        f"проверьте, что служба SMB (Server) запущена "
                        f"и файрвол не блокирует порт"), target
     except OSError:  # таймаут, нет маршрута и пр.
+    # timeout, no route, etc.
         return False, (f"сервер {target} недоступен (таймаут 5 с) — "
                        f"проверьте сеть и файрвол"), target
 
@@ -630,6 +740,10 @@ def check_rsyncd_server(end):
     """Предпроверка доступности rsyncd (TCP) перед запуском rsync.
 
     Возвращает (ok, err): err — причина недоступности на русском.
+
+    Pre-check of rsyncd availability (TCP) before starting rsync.
+
+    Returns (ok, err): err is the unavailability reason in Russian.
     """
     host = (end.get("host") or "").strip()
     port = _to_int(end.get("port"), 873)
@@ -645,6 +759,7 @@ def check_rsyncd_server(end):
                        f"проверьте, что служба rsync (rsyncd) запущена "
                        f"и файрвол открывает порт {port}")
     except OSError:  # таймаут, нет маршрута и пр.
+    # timeout, no route, etc.
         return False, (f"сервер {target} недоступен (таймаут 5 с) — "
                        f"проверьте сеть и файрвол")
 
@@ -655,6 +770,14 @@ def ftp_connect_details(end):
     Последовательно выполняется: DNS-разрешение имени, TCP-соединение,
     чтение приветственного сообщения сервера (баннер 220). Каждый шаг
     замеряется. Возвращает dict:
+      ok, err, host, port, target, ip, dns_secs, tcp_secs,
+      banner, total_secs
+
+    A detailed, step-by-step check of the connection to the FTP server.
+
+    Performed in sequence: DNS name resolution, the TCP connection,
+    reading the server greeting message (banner 220). Every step is
+    timed. Returns a dict:
       ok, err, host, port, target, ip, dns_secs, tcp_secs,
       banner, total_secs
     """
@@ -681,6 +804,7 @@ def ftp_connect_details(end):
             raise OSError("сервер закрыл соединение без ответа")
         parts = [banner.decode("utf-8", "replace").strip()]
         # многострочный баннер: «220- …» продолжается до «220  …»
+        # multiline banner: "220- ..." continues until "220  ..."
         while (len(parts) < 4 and len(parts[-1]) > 3
                and parts[-1][3] == "-"):
             nxt = f.readline(512)
@@ -705,6 +829,7 @@ def ftp_connect_details(end):
                        f"но не прислал приветственное сообщение "
                        f"(баннер 220) за 5 с")
     except OSError:  # таймаут, нет маршрута и пр.
+    # timeout, no route, etc.
         info["err"] = (f"сервер {info['target']} недоступен "
                        f"(таймаут 5 с) — проверьте сеть и файрвол")
     finally:
@@ -721,6 +846,10 @@ def check_ftp_server(end):
     """Предпроверка доступности FTP-сервера перед запуском lftp.
 
     Возвращает (ok, err): err — причина недоступности на русском.
+
+    Pre-check of the FTP server availability before starting lftp.
+
+    Returns (ok, err): err is the unavailability reason in Russian.
     """
     d = ftp_connect_details(end)
     return d["ok"], d["err"]
@@ -730,6 +859,11 @@ def ftp_conn_report_lines(d, label):
     """Строки журнала для результата ftp_connect_details (чистая).
 
     d — dict из ftp_connect_details, label — «FTP-источник:»/«FTP-цель:».
+
+    Log lines for the result of ftp_connect_details (pure function).
+
+    d is the dict from ftp_connect_details,
+    label is "FTP source:" / "FTP destination:".
     """
     if d.get("ok"):
         out = [f"{label} подключение к FTP-серверу {d['target']}"]
@@ -763,6 +897,16 @@ def ftp_conn_section(lftp_log_text, passwords=()):
     lines — строки протокола (не более 400), secs — длительность
     этапа по таймстампам lftp (None, если разобрать не удалось).
     Пароли (список passwords) маскируются на ***.
+
+    The FTP connection stage from the lftp log (pure function).
+
+    The log is created with the log:enabled/log:level 9/log:show-time
+    settings. Lines up to the first file transfer (RETR/STOR) are cut:
+    all parallel connections, login, passive mode, the initial
+    directory listings. Returns (lines, secs):
+    lines — protocol lines (at most 400), secs — the stage duration
+    from the lftp timestamps (None if parsing failed).
+    Passwords (the passwords list) are masked with ***.
     """
     lines = [ln for ln in (lftp_log_text or "").splitlines() if ln.strip()]
     if not lines:
@@ -804,6 +948,8 @@ def ftp_conn_section(lftp_log_text, passwords=()):
 
 # Соответствие типовых ошибок mount.cifs вероятным причинам (на русском).
 # Проверка идёт по порядку: первый найденный фрагмент stderr задаёт подсказку.
+# Mapping of typical mount.cifs errors to their likely causes (in Russian).
+# The check goes in order: the first stderr fragment found sets the hint.
 CIFS_ERROR_HINTS = [
     (("no matching hosts found", "name or service not known", "invalid name"),
      "не удалось разрешить имя сервера — проверьте адрес/имя хоста (DNS)"),
@@ -847,7 +993,8 @@ CIFS_ERROR_HINTS = [
 
 
 def _cifs_error_hint(stderr: str) -> str:
-    """Подбирает вероятную причину по тексту ошибки mount.cifs."""
+    """Подбирает вероятную причину по тексту ошибки mount.cifs.
+    Picks the likely cause from the mount.cifs error text."""
     s = (stderr or "").lower()
     for pats, hint in CIFS_ERROR_HINTS:
         if any(p in s for p in pats):
@@ -863,6 +1010,14 @@ def mount_smb(share: str, user: str, password: str, vers: str,
     Перед монтированием выполняются проверки: наличие программ
     (sudo/mount/mount.cifs) и доступность сервера по TCP.
     Все результаты записываются в журнал задания (если передан log).
+
+    Mounts an SMB share into data/mounts/<mount_id>.
+
+    mount_id distinguishes the source share from the destination share
+    (<job_id>-src/-dst). Before mounting, the following checks are run:
+    the presence of the programs (sudo/mount/mount.cifs) and the TCP
+    availability of the server. All results are written to the job log
+    (if log is provided).
     """
     mp = DATA_DIR / "mounts" / mount_id
     if mp.exists() and not mp.is_dir():
@@ -875,6 +1030,7 @@ def mount_smb(share: str, user: str, password: str, vers: str,
     lock = MOUNT_LOCKS.setdefault(mount_id, threading.Lock())
     with lock:
         # повторная проверка под локаком: другой поток мог смонтировать
+        # re-check under the lock: another thread may have mounted it
         if is_mounted(mp):
             return mp
         return _mount_smb_locked(share, user, password, vers, mount_id, mp, log)
@@ -882,7 +1038,8 @@ def mount_smb(share: str, user: str, password: str, vers: str,
 
 def _mount_smb_locked(share, user, password, vers, mount_id, mp, log):
     def mlog(level, msg):
-        """В журнал задания (или в консоль, если журнала нет)."""
+        """В журнал задания (или в консоль, если журнала нет).
+        To the job log (or to the console if there is no log)."""
         if log is not None:
             log.write(msg)
         else:
@@ -891,6 +1048,7 @@ def _mount_smb_locked(share, user, password, vers, mount_id, mp, log):
     mlog("INFO", f"Подключаю SMB-шару {share} -> {mp}")
 
     # --- проверки до запуска mount ---
+    # --- checks before running mount ---
     if SUDO and not shutil.which("sudo"):
         raise RuntimeError(f"Не удалось подключить SMB-шару {share}: "
                            "программа 'sudo' не найдена в PATH "
@@ -919,6 +1077,9 @@ def _mount_smb_locked(share, user, password, vers, mount_id, mp, log):
     # uid/gid — пользователь, от которого запущен сервер: cifs присваивает
     # им владение файлами шары, поэтому процесс бэкапа (даже при монтировании
     # через sudo от root) может читать/писать смонтированный каталог
+    # uid/gid is the user the server is run as: cifs assigns them
+    # ownership of the share's files, so the backup process (even when
+    # mounting via sudo as root) can read/write the mounted directory
     uid, gid = os.getuid(), os.getgid()
     opts += (f",uid={uid},gid={gid},"
              "file_mode=0660,dir_mode=0770,iocharset=utf8")
@@ -927,6 +1088,8 @@ def _mount_smb_locked(share, user, password, vers, mount_id, mp, log):
                 "нет доступа к sudo mount (проверьте /etc/sudoers)")
     # полная строка команды (пароль не попадает в строку —
     # он хранится во временном файле credentials=)
+    # full command line (the password is not in the line —
+    # it is stored in the temporary credentials= file)
     cmd = SUDO + ["mount", "-t", "cifs", "-o", opts, share, mp.as_posix()]
     mlog("INFO", f"Команда монтирования: {' '.join(cmd)}")
     try:
@@ -950,7 +1113,8 @@ def _mount_smb_locked(share, user, password, vers, mount_id, mp, log):
 
 
 def _fusermount_bin():
-    """Возвращает доступный fusermount (fusermount или fusermount3) или None."""
+    """Возвращает доступный fusermount (fusermount или fusermount3) или None.
+    Returns an available fusermount (fusermount or fusermount3) or None."""
     for name in ("fusermount", "fusermount3"):
         if shutil.which(name):
             return name
@@ -999,10 +1163,12 @@ def unmount_smb(mount_id: str, log=None):
 
 # --------------------------------------------------------------------------
 # Расписание
+# Schedule
 # --------------------------------------------------------------------------
 
 def compute_next_run(job, now: datetime, last_run):
-    """Возвращает datetime следующего запуска или None."""
+    """Возвращает datetime следующего запуска или None.
+    Returns the datetime of the next run or None."""
     st = job.get("schedule") or {}
     kind = st.get("kind", "manual")
     if kind == "interval":
@@ -1019,6 +1185,7 @@ def compute_next_run(job, now: datetime, last_run):
             return cand
         if kind == "weekly":
             wd = int(st.get("weekday") or 0) % 7  # 0 = понедельник
+            # 0 = Monday
             delta = (wd - now.weekday()) % 7
             cand = (now + timedelta(days=delta)).replace(
                 hour=hh, minute=mm, second=0, microsecond=0)
@@ -1035,6 +1202,7 @@ def init_next_runs():
         nr = compute_next_run(job, now, st.get("last_run"))
         if nr and nr.timestamp() < time.time() - 5:
             # пропуск по расписанию (сервер был выключен) — запускаем скоро
+            # a scheduled run was missed (the server was off) — run it soon
             clog("INFO", f"Задание '{job['name']}': время по расписанию "
                   "пропущено (сервер был выключен) — запуск через 1 минуту")
             nr = now + timedelta(seconds=60)
@@ -1045,6 +1213,7 @@ def init_next_runs():
 
 # --------------------------------------------------------------------------
 # Удержание снапшотов (принцип rsnapshot)
+# Snapshot retention (rsnapshot principle)
 # --------------------------------------------------------------------------
 
 def latest_snapshot(d, job_rel):
@@ -1079,8 +1248,10 @@ def prune_snapshots(job, d, job_rel):
         by_month[dt.strftime("%Y-%m")] = (dt, n)
     now = datetime.now()
     # самые свежие N снапшотов храним всегда (как период alpha в rsnapshot)
+    # the newest N snapshots are always kept (like the alpha period in rsnapshot)
     keep = {n for _, n in snaps[-keep_latest_n:]} if keep_latest_n else set()
     keep.add(snaps[-1][1])  # самый свежий всегда храним
+    # the newest one is always kept
     if keep_daily:
         for _, (dt, n) in by_day.items():
             if (now - dt).days < keep_daily:
@@ -1103,6 +1274,7 @@ def prune_snapshots(job, d, job_rel):
 
 # --------------------------------------------------------------------------
 # Запуск задания
+# Job execution
 # --------------------------------------------------------------------------
 
 def sanitize_name(name):
@@ -1114,6 +1286,7 @@ def build_rsync(job, d, target_rel, link_dest, dry, src_path, ssh_src=None,
                 password_files=None):
     opts = job.get("options") or {}
     # --stats — итоговая статистика (файлы, размер, скорость) для отчёта
+    # --stats — the final statistics (files, size, speed) for the report
     cmd = ["rsync", "-a", "--partial", "--timeout=900", "--stats"]
     if opts.get("checksum"):
         cmd.append("--checksum")
@@ -1127,6 +1300,7 @@ def build_rsync(job, d, target_rel, link_dest, dry, src_path, ssh_src=None,
     for pat in job.get("exclude") or []:
         cmd.append("--exclude=" + pat)
     # пароль rsyncd — только из файла (ни в командной строке, ни в логе)
+    # the rsyncd password — only from a file (neither on the command line nor in the log)
     for pf in password_files or []:
         cmd.append(f"--password-file={pf}")
     if link_dest:
@@ -1135,11 +1309,14 @@ def build_rsync(job, d, target_rel, link_dest, dry, src_path, ssh_src=None,
         cmd.append("--delete")
     # удалённый конец — только один (источник ИЛИ цель), поэтому -e ssh
     # нужен в любом случае, когда используется SSH-конец
+    # there is only one remote end (source OR destination), so -e ssh
+    # is needed in any case when an SSH end is used
     if ssh_src is not None:
         cmd[1:1] = ["-e", " ".join(ssh_argv(ssh_src))]
     elif isinstance(d, SshDest):
         cmd[1:1] = ["-e", " ".join(ssh_argv(d.dest))]
     # источник: trailing "/" означает «содержимое каталога»
+    # source: a trailing "/" means "the contents of the directory"
     cmd.append(src_path.rstrip("/") + "/")
     cmd.append(d.target(target_rel))
     return cmd
@@ -1147,6 +1324,7 @@ def build_rsync(job, d, target_rel, link_dest, dry, src_path, ssh_src=None,
 
 # --------------------------------------------------------------------------
 # Отчет о выполнении заданий (data/reports/report.txt)
+# Job execution report (data/reports/report.txt)
 # --------------------------------------------------------------------------
 
 REPORT_LOCK = threading.Lock()
@@ -1154,6 +1332,8 @@ REPORT_LOCK = threading.Lock()
 
 def plural_ru(n, one, few, many):
     """Русская плюрализация: plural_ru(3, "файл", "файла", "файлов")
+    -> "файла"; 1 -> "файл", 5 -> "файлов", 11 -> "файлов", 21 -> "файл".
+    Russian pluralization: plural_ru(3, "файл", "файла", "файлов")
     -> "файла"; 1 -> "файл", 5 -> "файлов", 11 -> "файлов", 21 -> "файл"."""
     n = abs(int(n)) % 100
     if 11 <= n <= 14:
@@ -1167,7 +1347,8 @@ def plural_ru(n, one, few, many):
 
 
 def human_size(n):
-    """Человекочитаемый размер: 12345678 -> '11.8 МБ'."""
+    """Человекочитаемый размер: 12345678 -> '11.8 МБ'.
+    Human-readable size: 12345678 -> '11.8 MB'."""
     n = float(n)
     for unit in ("Б", "КБ", "МБ", "ГБ", "ТБ"):
         if n < 1024 or unit == "ТБ":
@@ -1181,6 +1362,11 @@ def _parse_rsync_stats(lines):
 
     Возвращает dict со всеми найденными ключами (files, size, sent, recv)
     или None, если статистика не распознана.
+
+    Extracts the statistics from the `rsync --stats` output.
+
+    Returns a dict with all the keys found (files, size, sent, recv)
+    or None if the statistics were not recognized.
     """
     st = {}
     for ln in lines:
@@ -1201,7 +1387,8 @@ def _parse_rsync_stats(lines):
 
 def append_job_report(job_name, started, finished, dur, dry, mode,
                       stats, errors, dur_raw=None):
-    """Добавляет запись о выполнении задания в data/reports/report.txt."""
+    """Добавляет запись о выполнении задания в data/reports/report.txt.
+    Appends a job execution entry to data/reports/report.txt."""
     speed = None
     t = dur_raw if (dur_raw is not None and dur_raw > 0) else dur
     if t > 0:
@@ -1209,6 +1396,7 @@ def append_job_report(job_name, started, finished, dur, dry, mode,
             speed = stats["size"] / t
         elif stats:
             # размер переданных файлов неизвестен — берём трафик
+            # the size of the transferred files is unknown — use the traffic
             speed = (stats.get("sent", 0) + stats.get("recv", 0)) / t
     lines = [
         "=" * 60,
@@ -1246,6 +1434,13 @@ def append_job_report(job_name, started, finished, dur, dry, mode,
 # операции с директориями — показываются с -v и выше:
 #   «Mirroring directory `x'», «Making directory `x'»,
 #   «Finished mirror `x'», «Removing old directory `x'»
+# detailed lftp mirror operations (--verbose=3 output format):
+# file operations — shown only with -vv:
+#   "Transferring file `x'", "Finished transfer `x' (N B/s)",
+#   "Removing old file `x'"
+# directory operations — shown with -v and above:
+#   "Mirroring directory `x'", "Making directory `x'",
+#   "Finished mirror `x'", "Removing old directory `x'"
 _MIRROR_FILE_RE = re.compile(
     r"^(?:Transferring file|Finished transfer|Removing old file) `")
 _MIRROR_DIR_RE = re.compile(
@@ -1259,6 +1454,14 @@ _MIRROR_DIR_RE = re.compile(
 #   «mkdir file:<путь>», «mkdir [-p] ftp://…/<путь>» — создание
 #   каталога, «rm -r file:<путь>» / «rm -r ftp://…/<путь>» — удаление
 #   каталога. Уровни те же, что у подробных операций.
+# dry run (--dry-run): lftp prints the PLANNED commands
+# regardless of the --verbose level (verified on lftp 4.9.2):
+#   "get -O <dst> <src>" — file transfer,
+#   "chmod -f <mode> <path>" — permissions,
+#   "rm file:<path>" / "rm ftp://…/<path>" — file removal;
+#   "mkdir file:<path>", "mkdir [-p] ftp://…/<path>" — directory
+#   creation, "rm -r file:<path>" / "rm -r ftp://…/<path>" — directory
+#   removal. The levels are the same as for the detailed operations.
 _MIRROR_DRY_FILE_RE = re.compile(
     r"^(?:get -O |chmod -f |rm (?:file:|ftp://))")
 _MIRROR_DRY_DIR_RE = re.compile(
@@ -1282,6 +1485,23 @@ def mirror_out_visible(ln):
       «Removing old file»), и все dry-run-команды
       («get -O …», «chmod -f …», «rm …»).
     Остальные строки (ошибки, сводка) пишутся всегда.
+
+    Whether to write an lftp mirror output line to the job log.
+
+    The level depends on the service start key:
+    0 (no -v)   — detailed operations (files, directories) and
+      the planned dry-run commands are not written (quiet; lftp itself
+      is still started with --verbose=0, but it always prints the
+      dry-run commands — we filter them out);
+    1 (-v)      — only directory operations are written
+      ("Mirroring directory", "Making directory",
+      "Finished mirror", "Removing old directory") and
+      the dry-run commands with directories ("mkdir …", "rm -r …");
+    2 (-vv)     — all detailed operations are written, including
+      file ones ("Transferring file", "Finished transfer",
+      "Removing old file"), and all dry-run commands
+      ("get -O …", "chmod -f …", "rm …").
+    The other lines (errors, summary) are always written.
     """
     if _MIRROR_FILE_RE.match(ln):
         return VERBOSE >= 2
@@ -1296,6 +1516,7 @@ def mirror_out_visible(ln):
 
 # --------------------------------------------------------------------------
 # Прогресс FTP-копирования (отображение процентов в GUI)
+# FTP copy progress (percentage display in the GUI)
 # --------------------------------------------------------------------------
 # Процент считается по строкам вывода lftp mirror, которые и так
 # стримятся из процесса построчно («Finished transfer `x' (N B/s)») —
@@ -1309,23 +1530,41 @@ def mirror_out_visible(ln):
 # размеров). Если просмотр не удался, GUI показывает число
 # скопированных файлов без процента. Хранится только в памяти
 # (не пишется в state.json).
+# The percentage is computed from the lftp mirror output lines that are
+# already streamed from the process line by line
+# ("Finished transfer `x' (N B/s)") — without extra connections to the
+# FTP server and without polling. For the denominator (total files and
+# bytes) the source is scanned ONCE (local — os.walk, FTP — LIST over
+# the directories, one extra connection, no transfers). The scan runs
+# IN PARALLEL with the copy in a background thread: the run start does
+# not wait for the scan, the total is picked up as it becomes available
+# (while it is being computed, the GUI shows "total is being
+# determined…", and files that finished before the total arrived are
+# recomputed using the size map). If the scan failed, the GUI shows
+# the number of copied files without a percentage. Kept in memory only
+# (not written to state.json).
 FTP_PROGRESS = {}      # job_id -> {total_files, total_bytes,
                        #            total_pending, done_files,
                        #            done_bytes, pct | None}
 # служебные данные скана (карта размеров и список завершённых
 # файлов) — отдельно, чтобы не попадать в /api/jobs (иначе
 # размер ответа раздувается на десятки тысяч записей)
+# internal scan data (the size map and the list of finished
+# files) — kept separately so as not to leak into /api/jobs
+# (otherwise the response would balloon to tens of thousands of entries)
 FTP_SCAN_EXTRAS = {}   # job_id -> {"size_map": {...},
                        #            "done_names": [...]}
 FTP_PROGRESS_LOCK = threading.Lock()
 
 
 class ScanLimitExceeded(Exception):
-    """Просмотр источника превысил лимит (каталогов/файлов/времени)."""
+    """Просмотр источника превысил лимит (каталогов/файлов/времени).
+    The source scan exceeded a limit (directories/files/time)."""
 
 
 def _plural_ru(n, one, few, many):
-    """Склонение русского существительного: 1 файл, 2 файла, 5 файлов."""
+    """Склонение русского существительного: 1 файл, 2 файла, 5 файлов.
+    Russian noun inflection: 1 file, 2 files, 5 files."""
     n %= 100
     if 11 <= n <= 14:
         return many
@@ -1349,6 +1588,14 @@ def ftp_track_transfer(inflight, ln):
     («Finished transfer `x'»). При остановке задания до конца
     прогона в этом словаре остаются файлы, чья передача была
     прервана — на цели они могут оказаться обрезанными.
+
+    Updates the in-flight transfers dict from an lftp line (pure).
+
+    inflight — dict (insertion order): the name of a file whose
+    transfer has started ("Transferring file `x'") but not yet
+    finished ("Finished transfer `x'"). If the job is stopped before
+    the run completes, the files whose transfer was interrupted remain
+    in this dict — on the destination they may end up truncated.
     """
     if ln.startswith("Transferring file `"):
         m = _FTP_TRANSFERRING_RE.match(ln)
@@ -1370,6 +1617,16 @@ def ftp_progress_on_line(prog, sizes, ln, done_names=None):
     прийти позже начала копирования (скан параллелен прогону), и
     по этому списку при её приходе пересчитываются байты.
     Возвращает True, если строка — «Finished transfer …».
+
+    Accounts for a finished transfer from an lftp output line (pure).
+
+    prog — the progress dict, sizes — {relative path: bytes} from
+    the preliminary scan of the source, ln — the lftp output line.
+    done_names — a list (optional) into which the names of finished
+    files are appended: the size map may arrive after the copy has
+    started (the scan runs in parallel with the run), and when it
+    arrives the byte counts are recomputed using this list.
+    Returns True if the line is "Finished transfer …".
     """
     m = _FTP_FINISHED_RE.match(ln)
     if not m:
@@ -1400,13 +1657,27 @@ def progress_view(prog, now):
     файлах «узкое место» — накладные расходы на файл, а не
     байты; None, пока нет итога или скорости). Вычисляется
     при каждом чтении — вызывайте под FTP_PROGRESS_LOCK.
+
+    A copy of the progress for /api/jobs: + speed and remaining time.
+
+    speed — the average transfer speed of the run, bytes/s
+    (done_bytes / the time since the run started; None while the run
+    is too short or the size map has not arrived yet);
+    eta — the estimated remaining time, seconds: the maximum of two
+    estimates — remaining bytes / speed and remaining files /
+    the file rate (max — because with many small files the "bottleneck"
+    is the per-file overhead, not the bytes; None until the total or
+    the speed is known). Computed on every read — call it under
+    FTP_PROGRESS_LOCK.
     """
     out = dict(prog)
     out.pop("started_at", None)  # служебное (monotonic), клиенту не нужно
+    # internal (monotonic), not needed by the client
     speed = fspeed = None
     started = prog.get("started_at")
     el = (now - started) if started is not None else 0.0
     if el >= 1.0:  # первые секунды — шум, не показываем
+    # the first seconds are noise, do not show them
         if prog.get("done_bytes", 0) > 0:
             speed = prog["done_bytes"] / el
         if prog.get("done_files", 0) > 0:
@@ -1434,6 +1705,11 @@ def _scan_excluded(rel, name, patterns):
 
     lftp сопоставляет шаблон с именем файла (и с путём относительно
     корня зеркала) — проверяем оба варианта.
+
+    Does the file/directory match the job's --exclude-glob?
+
+    lftp matches the pattern against the file name (and against the
+    path relative to the mirror root) — we check both variants.
     """
     for p in patterns or []:
         if fnmatch.fnmatch(name, p):
@@ -1447,6 +1723,11 @@ def scan_local_source(path, patterns):
     """Просмотр локального источника: (файлов, байты, {rel: size}).
 
     Один проход os.walk по каталогу — дёшево, сетевых запросов нет.
+
+    Scans a local source: (files, bytes, {rel: size}).
+
+    A single os.walk pass over the directory — cheap, no network
+    requests.
     """
     sizes = {}
     n = 0
@@ -1481,6 +1762,19 @@ def scan_ftp_source(end, patterns, timeout=30, max_dirs=100000,
     При любой другой ошибке бросает исключение (прогресс будет
     показан без процента; при превышении лимита —
     ScanLimitExceeded).
+
+    Scans an FTP source: (files, bytes, {rel: size}).
+
+    One extra FTP connection, LIST on the directory (no transfers) —
+    what mirror does itself anyway. passive — the data mode
+    (PASV/PORT); it must match the job setting (lftp.passive),
+    otherwise the scan may fail where mirror itself works. The limits
+    (directories/files/time) protect against abnormally large sources:
+    the scan runs in parallel with the copy and does not delay the run
+    start. stop — an optional stop threading.Event: when it is set
+    (the "Stop" button) it raises _StopRequested. On any other error
+    it raises an exception (the progress will be shown without a
+    percentage; when a limit is exceeded — ScanLimitExceeded).
     """
     import ftplib
     sizes = {}
@@ -1517,6 +1811,7 @@ def scan_ftp_source(end, patterns, timeout=30, max_dirs=100000,
             parts = ln.split(None, 8)
             if len(parts) < 9:
                 continue  # «total …», пустые строки и т.п.
+                # "total …", empty lines, etc.
             kind = parts[0][0]
             try:
                 sz = int(parts[4])
@@ -1532,6 +1827,7 @@ def scan_ftp_source(end, patterns, timeout=30, max_dirs=100000,
                 continue
             if _scan_excluded(rel, name, patterns):
                 continue  # исключённый каталог не обходим
+                # an excluded directory is not walked
             if kind == "d":
                 walk(absdir.rstrip("/") + "/" + name)
             else:
@@ -1562,6 +1858,10 @@ def _rc_stopped_by_user(rc):
     """Процесс завершён сигналом SIGTERM — это остановка кнопкой
     «Остановить» (stop_job шлёт SIGTERM в группу процесса).
     Остановка не является ошибкой — отдельный статус "stopped".
+
+    The process was terminated by a SIGTERM signal — this is a stop via
+    the "Stop" button (stop_job sends SIGTERM to the process group).
+    A stop is not an error — it has a separate "stopped" status.
     """
     return rc == -signal.SIGTERM
 
@@ -1571,6 +1871,11 @@ def lftp_buffer_line(buffer_kib):
 
     buffer_kib — размер буфера, КиБ (настройка lftp.buffer задания).
     0 — строку не писать (оставить дефолт lftp 64 КБ).
+
+    The lftp script line for the transfer buffer (xfer:buffer-size).
+
+    buffer_kib — the buffer size in KiB (the job's lftp.buffer setting).
+    0 — do not write the line (keep the lftp default of 64 KiB).
     """
     if buffer_kib and buffer_kib > 0:
         return "set xfer:buffer-size 0x%x" % (buffer_kib * 1024)
@@ -1581,6 +1886,9 @@ def lftp_buffer_line(buffer_kib):
 # Продолжение после обрыва БЕЗ mirror: сравнение списков
 # «источник − скопировано» и копирование недостающих файлов
 # прямыми FTP-передачами (ftplib, параллельные потоки)
+# Continuation after an interruption WITHOUT mirror: comparing the
+# "source − copied" lists and copying the missing files with direct
+# FTP transfers (ftplib, parallel threads)
 # ---------------------------------------------------------------------------
 
 STOP_EVENTS = {}   # job_id -> threading.Event: впроцессный движок
@@ -1588,14 +1896,22 @@ STOP_EVENTS = {}   # job_id -> threading.Event: впроцессный движ�
                    # lftp, в который шлать SIGTERM, нет; остановка
                    # по флагу, проверяется между файлами и в ходе
                    # приёма (RETR) по каждому чанку
+# job_id -> threading.Event: the in-process copy engine (continuation
+# without mirror) — there is no lftp process to send SIGTERM to; the
+# stop is by a flag, checked between files and during the receive
+# (RETR) on every chunk
 
 # Кавычки в аргументах FTP-команд не используются (см. _ftp_quote):
 # FileZilla Server 1.12.6 (production) отказывает (550 Unknown error)
 # на ЛЮБЫХ кавычках, в т.ч. при пробелах в имени.
+# Quotes are not used in FTP command arguments (see _ftp_quote):
+# FileZilla Server 1.12.6 (production) rejects (550 Unknown error)
+# ANY quotes, including ones with spaces in the name.
 
 
 class _StopRequested(Exception):
-    """Остановка запрошена в ходе передачи файла."""
+    """Остановка запрошена в ходе передачи файла.
+    A stop was requested during a file transfer."""
 
 
 def _ftp_quote(name):
@@ -1606,7 +1922,16 @@ def _ftp_quote(name):
     при каких символах: FileZilla 1.12.6 на любых кавычках (даже
     при пробелах в имени) отвечает 550 Unknown error.
     RFC 3659 рекомендует кавычки для «специальных» имён, но этот
-    сервер их не понимает — совместимость с production важнее."""
+    сервер их не понимает — совместимость с production важнее.
+    An FTP command argument (RETR/STOR/MKDIR): the name is sent as is,
+    without quotes. The FTP command argument is everything up to the
+    end of the line (RFC 959); spaces and non-ASCII in it are legal;
+    verified on FileZilla Server 1.12.6 (production). Quotes are NOT
+    added for any characters: FileZilla 1.12.6 answers 550 Unknown
+    error to any quotes (even with spaces in the name).
+    RFC 3659 recommends quotes for "special" names, but this server
+    does not understand them — compatibility with production matters
+    more."""
     return name
 
 
@@ -1618,6 +1943,14 @@ def ftp_missing_list(sizes, copied):
     или сохранённая карта). Файл считается недостающим, если его
     нет на цели или размер отличается от исходного (обрезанный
     при обрыве файл будет скопирован заново целиком).
+
+    The files missing on the destination (pure function).
+
+    sizes — {relative path: bytes} for the source, copied —
+    {relative path: bytes} on the destination (a local directory scan
+    or the saved map). A file is considered missing if it is not on
+    the destination or its size differs from the original (a file
+    truncated by an interruption will be copied over again in full).
     """
     return {r: s for r, s in sizes.items() if copied.get(r) != s}
 
@@ -1628,6 +1961,12 @@ def load_copied_map(jid):
     Ведётся только для FTP-цели (перечисление удалённой цели
     дорогое); после каждого прогона: при успехе — полный список
     источника, при остановке/ошибке — реально скопированное.
+
+    The saved "copied" map {relative path: bytes}.
+
+    Kept only for an FTP destination (listing the remote destination
+    is expensive); after each run: on success — the full source
+    listing, on stop/error — what was actually copied.
     """
     try:
         d = json.loads((DATA_DIR / "ftp_state" / f"{jid}.json")
@@ -1638,7 +1977,8 @@ def load_copied_map(jid):
 
 
 def save_copied_map(jid, m):
-    """Атомарно сохранить карту «скопировано»; True при успехе."""
+    """Атомарно сохранить карту «скопировано»; True при успехе.
+    Atomically save the "copied" map; True on success."""
     try:
         p = DATA_DIR / "ftp_state" / f"{jid}.json"
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -1653,6 +1993,8 @@ def save_copied_map(jid, m):
 
 def _ftp_connect(end, passive=True, timeout=30):
     """Соединение ftplib с FTP-концом (без SSL — как в lftp:
+    set ftp:ssl-allow no).
+    An ftplib connection to the FTP end (without SSL — like in lftp:
     set ftp:ssl-allow no)."""
     import ftplib
     ftp = ftplib.FTP(timeout=timeout)
@@ -1683,6 +2025,12 @@ def _ftp_mkdirs(ftp, rdir, created):
     created — общий набор каталогов, наличие которых гарантировано
     (доступ под замком на стороне вызывающего): каталоги создаются
     лениво, при первом файле в них.
+
+    Create the remote directory (with parents) if it does not exist.
+
+    created — the shared set of directories whose existence is
+    guaranteed (accessed under the caller's lock): directories are
+    created lazily, on the first file in them.
     """
     import ftplib
     cur = ""
@@ -1694,12 +2042,15 @@ def _ftp_mkdirs(ftp, rdir, created):
             ftp.mkd(cur)
         except ftplib.error_perm:
             pass  # уже существует (550) — передача это проверит
+            # it already exists (550) — the transfer will check this
         created.add(cur)
 
 
 def _ftp_retr(ftp, rpath, local_path, stop, block):
     """RETR → локальный файл (существующий обрезается с начала).
-    Проверка остановки — по каждому чанку данных."""
+    Проверка остановки — по каждому чанку данных.
+    RETR to a local file (an existing one is truncated from the start).
+    The stop is checked on every data chunk."""
     f = open(local_path, "wb")
 
     def cb(chunk):
@@ -1716,7 +2067,10 @@ def _ftp_retr(ftp, rpath, local_path, stop, block):
 def _ftp_stor(ftp, lpath, rpath, stop, block):
     """STOR из локального файла (на сервере файл обрезается с
     начала). Проверка остановки — только между файлами: у
-    storbinary нет колбэка по чанкам."""
+    storbinary нет колбэка по чанкам.
+    STOR from a local file (on the server the file is truncated from
+    the start). The stop is checked only between files: storbinary
+    has no per-chunk callback."""
     if stop.is_set():
         raise _StopRequested()
     with open(lpath, "rb") as f:
@@ -1724,7 +2078,8 @@ def _ftp_stor(ftp, lpath, rpath, stop, block):
 
 
 def _walk_dir_stats(path):
-    """(число файлов, байты) в дереве каталога."""
+    """(число файлов, байты) в дереве каталога.
+    (number of files, bytes) in the directory tree."""
     n = tot = 0
     for dp, _, fns in os.walk(path):
         for fn in fns:
@@ -1752,6 +2107,22 @@ def _ftp_copy_engine(job, src, dest, missing, prog, stop):
     передача была прервана (возможны обрезки на цели),
     copied_map — скопированные в этом прогоне файлы (для
     локальной цели — None).
+
+    Parallel copying of the list of missing files without mirror.
+
+    The number of threads is lftp.parallel; each has its own ftplib
+    connections (one per FTP end); the transfers are direct RETR/STOR,
+    lftp is not involved. FTP→FTP — via a temporary file. The stop is
+    by the stop flag: checked between files and during the receive
+    (RETR) on every chunk; an unfinished file remains truncated on the
+    destination and will be copied over again in the next continuation
+    (it is not in the "copied" list).
+
+    Returns (stopped, errors, interrupted, copied_map):
+    errors — a list of "path: error", interrupted — the files whose
+    transfer was interrupted (truncations on the destination are
+    possible), copied_map — the files copied in this run (None for a
+    local destination).
     """
     jid = job.get("id", "")
     lf = job.get("lftp") or {}
@@ -1765,6 +2136,8 @@ def _ftp_copy_engine(job, src, dest, missing, prog, stop):
 
     # lftp mirror кладёт имя каталога-источника ВНУТРЬ цели —
     # движок повторяет ту же раскладку
+    # lftp mirror places the source directory name INSIDE the
+    # destination — the engine repeats the same layout
     if src_is_ftp:
         src_root = (src.get("path") or "/").strip()
         if not src_root.startswith("/"):
