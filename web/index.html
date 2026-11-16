@@ -805,6 +805,9 @@ ru: {
   // (статусы, время, кнопки, прогресс)
   stRunning: "выполняется…", stOk: "успешно", stError: "ошибка",
   stStopped: "остановлено", stNever: "не запускалось",
+  stSrcTotal: "Источник: {0} файлов",
+  stNeedTotal: "К копированию: {0} файлов",
+  stCopied: "Скопировано: {0} файлов",
   metaDuration: "длительность ", metaCopied: "скопировано ",
   btnRun: "Запустить сейчас",
   btnContinue: "Продолжить после обрыва: сравнение списков (источник − скопировано), недостающие файлы копируются без mirror, обрезанный — заново целиком (остальные опции задания)",
@@ -966,6 +969,9 @@ en: {
   // (statuses, time, buttons, progress)
   stRunning: "running…", stOk: "ok", stError: "error",
   stStopped: "stopped", stNever: "never ran",
+  stSrcTotal: "Source: {0} files",
+  stNeedTotal: "To copy: {0} files",
+  stCopied: "Copied: {0} files",
   metaDuration: "duration ", metaCopied: "copied ",
   btnRun: "Run now",
   btnContinue: "Continue after a break: list comparison (source − copied), missing files are copied without mirror, the truncated file is re-copied in full (other job options unchanged)",
@@ -1216,6 +1222,11 @@ function fmtSize(b) {
   if (b > 1024 * 1024) return (b / 1048576).toFixed(1) + " " + t("unitMB");
   return (b / 1024).toFixed(0) + " " + t("unitKB");
 }
+/* разделитель тысяч по языку: ru — пробел, en — запятая */
+function fmtNum(n) {
+  if (n == null) return "—";
+  return n.toLocaleString(LANG === "en" ? "en-GB" : "ru-RU");
+}
 /* текущая длительность выполняющегося прогона: с точностью до
    секунд пока идёт, в часах — минутами (обновляется опросом 2 с) */
 function fmtElapsed(s) {
@@ -1374,7 +1385,9 @@ function renderJobs() {
         "</div>" +
       "</td></tr>");
     // прогресс FTP-копирования (state.progress — только во время
-    // прогона) — отдельная строка таблицы под строкой задания
+    // прогона) — отдельная строка таблицы под строкой задания;
+    // после прогона строка остаётся со статистикой (state.last_stats):
+    // суммарное число файлов на источнике и сколько скопировано
     const pr = (st.running && st.progress) ? st.progress : null;
     if (pr) {
       const pct = (pr.pct != null) ? Math.round(pr.pct) : null;
@@ -1396,6 +1409,21 @@ function renderJobs() {
         '<div class="pmeta">' + (pct != null ? pct + "% · " : "")
         + pr.done_files + (pr.total_files ? " / " + pr.total_files : "")
         + t("filesWord") + note + extra + "</div></div></td></tr>");
+    } else if (!st.running && st.last_stats) {
+      // прогон завершён: итоговая статистика под строкой задания
+      // (без бара, скорости и ETA — только итоги)
+      const ls = st.last_stats;
+      const parts = [];
+      if (ls.total_files != null)
+        parts.push(t(ls.total_meaning === "needed" ? "stNeedTotal"
+                                                   : "stSrcTotal",
+                     fmtNum(ls.total_files)));
+      let cop = t("stCopied", fmtNum(ls.copied_files));
+      if (ls.copied_bytes != null) cop += " (" + fmtSize(ls.copied_bytes) + ")";
+      parts.push(cop);
+      rows.push('<tr class="progrow"><td colspan="9"><div class="pline">' +
+        '<div class="pmeta" style="opacity:.7">' + parts.join(" · ") +
+        "</div></div></td></tr>");
     }
   }
   tb.innerHTML = rows.join("");

@@ -250,6 +250,11 @@ class State:
                 # seconds
                 "last_size": None,       # байты
                 # bytes
+                # итог последнего прогона для GUI (строка под
+                # заданием): число файлов на источнике и скопировано
+                # last run total for the GUI (row under the job):
+                # file count on the source and files copied
+                "last_stats": None,
                 "next_run": None,        # epoch
             })
 
@@ -1554,6 +1559,15 @@ FTP_PROGRESS = {}      # job_id -> {total_files, total_bytes,
 # (otherwise the response would balloon to tens of thousands of entries)
 FTP_SCAN_EXTRAS = {}   # job_id -> {"size_map": {...},
                        #            "done_names": [...]}
+# итоговый снимок прогресса после завершения прогона — для строки
+# статистики под заданием в GUI (state.last_stats); заполняется в
+# finally FTP-веток, забирается в finally run_job
+# the final progress snapshot after a run — for the stats row under
+# the job in the GUI (state.last_stats); filled in the finally of the
+# FTP branches, picked up in the finally of run_job
+LAST_FTP_PROGRESS = {}  # job_id -> {total_files, total_bytes,
+                        #            total_meaning, copied_files,
+                        #            copied_bytes}
 FTP_PROGRESS_LOCK = threading.Lock()
 
 
@@ -2447,6 +2461,23 @@ def _run_ftp_continue(job, src, dest, log, dry):
                 None, None, [str(e)]
         finally:
             with FTP_PROGRESS_LOCK:
+                # итоговый снимок прогресса — в строку статистики под
+                # заданием в GUI (total_meaning: «needed» — это число
+                # файлов, ДОЛЖНЫХ быть скопированными (источник −
+                # скопировано), а не весь источник)
+                if jid in FTP_PROGRESS:
+                    p = FTP_PROGRESS[jid]
+                    LAST_FTP_PROGRESS[jid] = {
+                        "total_files": p.get("total_files"),
+                        "total_bytes": p.get("total_bytes"),
+                        "total_meaning": "needed",
+                        "copied_files": p.get("done_files", 0),
+                        "copied_bytes": p.get("done_bytes", 0),
+                    }
+                else:
+                    # «копировать нечего» / dry: прогресс не создавался
+                    # nothing to copy / dry: no progress was created
+                    LAST_FTP_PROGRESS.pop(jid, None)
                 FTP_PROGRESS.pop(jid, None)
 
         # сохраняем список «скопировано» для следующих продолжений
@@ -2915,6 +2946,24 @@ def _run_ftp_mirror(job, src, dest, log, dry):
             ex = FTP_SCAN_EXTRAS.get(jid) or {}
             cont_done_names = list(ex.get("done_names") or [])
             cont_size_map = dict(ex.get("size_map") or {})
+            # итоговый снимок прогресса — в строку статистики под
+            # заданием в GUI после прогона (total_meaning: скан
+            # источника = всего файлов на источнике)
+            if jid in FTP_PROGRESS:
+                p = FTP_PROGRESS[jid]
+                LAST_FTP_PROGRESS[jid] = {
+                    "total_files": p.get("total_files"),
+                    "total_bytes": p.get("total_bytes"),
+                    "total_meaning": "source",
+                    "copied_files": p.get("done_files", 0),
+                    "copied_bytes": p.get("done_bytes", 0),
+                }
+            else:
+                # тестовый прогон (prog не создавался) — убрать
+                # возможный снимок от предыдущего прогона
+                # a test run (no progress was created) — drop a
+                # possible snapshot from the previous run
+                LAST_FTP_PROGRESS.pop(jid, None)
             FTP_PROGRESS.pop(jid, None)
             FTP_SCAN_EXTRAS.pop(jid, None)
         try:
@@ -3390,10 +3439,34 @@ def run_job(job_id, dry=False, lftp_overrides=None):
                 log.write(f"Отчет: {rep}")
             except Exception as e:
                 clog("WARN", f"Не удалось записать отчет: {e!r}")
+            # строка статистики под заданием в GUI (после прогона):
+            # суммарное число файлов на источнике и скопировано.
+            # FTP — итоговый снимок прогресса (LAST_FTP_PROGRESS),
+            # rsync — статистика rsync --stats (только число
+            # переданных файлов; итог по источнику неизвестен).
+            # Тестовый прогон — без строки (ничего не копировалось).
+            # the stats row under the job in the GUI (after a run):
+            # total file count on the source and files copied.
+            last_stats = None
+            if not dry:
+                lp = LAST_FTP_PROGRESS.pop(job_id, None)
+                if lp:
+                    last_stats = lp
+                elif isinstance(stats, dict):
+                    copied = stats.get("files")
+                    if copied is not None:
+                        last_stats = {
+                            "total_files": None,
+                            "total_bytes": None,
+                            "total_meaning": None,
+                            "copied_files": copied,
+                            "copied_bytes": stats.get("size"),
+                        }
             STATE.update(job_id, running=False, started_at=None,
                          last_run=time.time(),
                          last_status=status, last_error=error,
                          last_duration=dur, last_size=size,
+                         last_stats=last_stats,
                          next_run=nxt.timestamp() if nxt else None)
             STATE.add_history({"ts": time.time(), "job": job["name"],
                                "status": status, "duration": dur,

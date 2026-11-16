@@ -56,7 +56,9 @@ Limitations:
   (old snapshots are removed automatically).
 - **Options**: excludes, compression, checksums, rate limit, dry run
   (test run), stopping a run.
-- **Log** of each job and run history.
+- **Log** of each job and run history; after a run, the row under the
+  job keeps the stats: total files on the source and how many were
+  copied.
 - **Password authentication for the interface** (optional, can be disabled;
   the password is stored as an scrypt hash).
 - **Push notifications (ntfy)** about the start and finish of each job —
