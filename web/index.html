@@ -125,15 +125,15 @@ footer { text-align:center; color:#94a3b8; font-size:12px; padding:8px 0 26px; }
 
 <header>
   <h1>backupd</h1>
-  <span class="sub">резервное копирование Linux → Windows (rsync)</span>
+  <span class="sub" data-i18n="headerSub">резервное копирование Linux → Windows (rsync)</span>
   <span class="badge" id="rsyncBadge">rsync: …</span>
   <span class="badge" id="authBadge"></span>
 </header>
 
 <nav>
-  <button id="tabJobs" class="active" onclick="switchTab('jobs')">Задания</button>
-  <button id="tabLog" onclick="switchTab('log')">Журнал</button>
-  <button id="tabSystem" onclick="switchTab('system')">Система</button>
+  <button id="tabJobs" class="active" onclick="switchTab('jobs')" data-i18n="tabJobs">Задания</button>
+  <button id="tabLog" onclick="switchTab('log')" data-i18n="tabLog">Журнал</button>
+  <button id="tabSystem" onclick="switchTab('system')" data-i18n="tabSystem">Система</button>
 </nav>
 
 <main>
@@ -141,34 +141,36 @@ footer { text-align:center; color:#94a3b8; font-size:12px; padding:8px 0 26px; }
 <!-- ============================ ЗАДАНИЯ ============================ -->
 <section id="secJobs">
   <div class="toolbar">
-    <h2>Задания резервного копирования</h2>
-    <button class="btn primary" onclick="openJobForm(null)">＋ Добавить задание</button>
+    <h2 data-i18n="jobsTitle">Задания резервного копирования</h2>
+    <button class="btn primary" onclick="openJobForm(null)" data-i18n="addJob">＋ Добавить задание</button>
   </div>
   <div class="card" style="padding:6px 10px;">
     <div class="jobswrap">
     <table>
       <thead>
         <tr>
-          <th style="width:40px">Вкл</th><th>Имя</th><th>Источник</th><th>Цель</th>
-          <th>Режим</th><th>Расписание</th><th>Последний запуск</th><th>Следующий</th>
-          <th>Действия</th>
+          <th style="width:40px" data-i18n="thOn">Вкл</th><th data-i18n="thName">Имя</th>
+          <th data-i18n="thSource">Источник</th><th data-i18n="thDest">Цель</th>
+          <th data-i18n="thMode">Режим</th><th data-i18n="thSchedule">Расписание</th>
+          <th data-i18n="thLastRun">Последний запуск</th><th data-i18n="thNext">Следующий</th>
+          <th data-i18n="thActions">Действия</th>
         </tr>
       </thead>
       <tbody id="jobsBody"></tbody>
     </table>
     </div>
     <div id="jobsEmpty" class="muted" style="padding:18px;text-align:center"
-         hidden>Заданий пока нет. Нажмите «Добавить задание».</div>
+         hidden data-i18n="jobsEmpty">Заданий пока нет. Нажмите «Добавить задание».</div>
   </div>
 </section>
 
 <!-- ============================ ЖУРНАЛ ============================ -->
 <section id="secLog" class="hidden">
   <div class="toolbar">
-    <h2>Журнал</h2>
+    <h2 data-i18n="logTitle">Журнал</h2>
     <div>
       <select class="jobpick" id="logJob" onchange="logJobChanged()"></select>
-      <button class="btn" style="margin-left:8px" onclick="refreshLog(true)">Обновить</button>
+      <button class="btn" style="margin-left:8px" onclick="refreshLog(true)" data-i18n="refresh">Обновить</button>
     </div>
   </div>
   <div class="card">
@@ -179,22 +181,31 @@ footer { text-align:center; color:#94a3b8; font-size:12px; padding:8px 0 26px; }
 <!-- ============================ СИСТЕМА ============================ -->
 <section id="secSystem" class="hidden">
   <div class="card">
-    <h2>Состояние сервера</h2>
+    <h2 data-i18n="langTitle">Язык интерфейса</h2>
+    <div class="row" style="align-items:center">
+      <select id="langSelect" style="max-width:240px" onchange="setLang(this.value)">
+        <option value="ru">Русский</option>
+        <option value="en">English</option>
+      </select>
+    </div>
+  </div>
+  <div class="card">
+    <h2 data-i18n="sysStatusTitle">Состояние сервера</h2>
     <table>
-      <tr><td class="muted">Версия backupd</td><td id="sVer" class="mono"></td></tr>
+      <tr><td class="muted" data-i18n="sysVer">Версия backupd</td><td id="sVer" class="mono"></td></tr>
       <tr><td class="muted">rsync</td><td id="sRsync" class="mono"></td></tr>
       <tr><td class="muted">lftp (FTP)</td><td id="sLftp" class="mono"></td></tr>
       <tr><td class="muted">Python</td><td id="sPy" class="mono"></td></tr>
-      <tr><td class="muted">Время работы</td><td id="sUp"></td></tr>
-      <tr><td class="muted">Каталог данных</td><td id="sData" class="mono"></td></tr>
-      <tr><td class="muted">Заданий</td><td id="sJobs"></td></tr>
-      <tr><td class="muted">Монтирование SMB</td><td id="sSudo"></td></tr>
-      <tr><td class="muted">Отключение SMB</td><td id="sFusermount" class="mono"></td></tr>
+      <tr><td class="muted" data-i18n="sysUptime">Время работы</td><td id="sUp"></td></tr>
+      <tr><td class="muted" data-i18n="sysDataDir">Каталог данных</td><td id="sData" class="mono"></td></tr>
+      <tr><td class="muted" data-i18n="sysJobs">Заданий</td><td id="sJobs"></td></tr>
+      <tr><td class="muted" data-i18n="sysSmbMount">Монтирование SMB</td><td id="sSudo"></td></tr>
+      <tr><td class="muted" data-i18n="sysSmbUnmount">Отключение SMB</td><td id="sFusermount" class="mono"></td></tr>
     </table>
   </div>
   <div class="card">
-    <h2>Доступ (пароль)</h2>
-    <p class="hint" style="margin-top:0">
+    <h2 data-i18n="accessTitle">Доступ (пароль)</h2>
+    <p class="hint" style="margin-top:0" data-i18n-html="authHint">
       Если задан пароль, для доступа к интерфейсу нужно войти. Сессия действует
       12 часов. Программный доступ к API: получить токен
       <span class="mono">POST /api/login</span> и передавать его в заголовке
@@ -203,15 +214,15 @@ footer { text-align:center; color:#94a3b8; font-size:12px; padding:8px 0 26px; }
     <div class="row" style="align-items:center">
       <span id="tokenState" class="pill idle">…</span>
       <div style="flex:2">
-        <button class="btn" onclick="setPassword()">Задать / сменить пароль</button>
-        <button class="btn" id="tokenOffBtn" onclick="clearPassword()">Отключить авторизацию</button>
-        <button class="btn" id="logoutBtn" onclick="doLogout()">Выйти</button>
+        <button class="btn" onclick="setPassword()" data-i18n="setPasswordBtn">Задать / сменить пароль</button>
+        <button class="btn" id="tokenOffBtn" onclick="clearPassword()" data-i18n="disableAuth">Отключить авторизацию</button>
+        <button class="btn" id="logoutBtn" onclick="doLogout()" data-i18n="logout">Выйти</button>
       </div>
     </div>
   </div>
   <div class="card">
-    <h2>Push-уведомления (ntfy)</h2>
-    <p class="hint" style="margin-top:0">
+    <h2 data-i18n="notifyTitle">Push-уведомления (ntfy)</h2>
+    <p class="hint" style="margin-top:0" data-i18n-html="notifyHint">
       Сообщения о <b>начале</b> и <b>завершении</b> каждого задания — на ваше
       устройство. Работает через публичный сервер
       <span class="mono">ntfy.sh</span> (интернет) или через собственный
@@ -223,42 +234,42 @@ footer { text-align:center; color:#94a3b8; font-size:12px; padding:8px 0 26px; }
     </p>
     <div class="row">
       <div style="flex:2">
-        <label>Сервер ntfy</label>
+        <label data-i18n="ntfyServer">Сервер ntfy</label>
         <input type="text" id="n_url" class="mono" placeholder="https://ntfy.sh">
       </div>
       <div style="flex:2">
-        <label>Топик (имя подписки в приложении)</label>
+        <label data-i18n="ntfyTopic">Топик (имя подписки в приложении)</label>
         <input type="text" id="n_topic" class="mono" placeholder="backupd-…">
       </div>
     </div>
     <div class="row" style="align-items:center;margin-top:10px">
       <label class="checkbox"><input type="checkbox" id="n_enabled">
-        Включить push-уведомления</label>
+        <span data-i18n="ntfyEnable">Включить push-уведомления</span></label>
     </div>
     <div class="row" style="align-items:center;margin-top:10px">
       <span id="notifyState" class="pill idle">…</span>
       <div style="flex:2">
-        <button class="btn" onclick="saveNotify()">Сохранить</button>
-        <button class="btn" onclick="testNotify()">Отправить тест</button>
+        <button class="btn" onclick="saveNotify()" data-i18n="save">Сохранить</button>
+        <button class="btn" onclick="testNotify()" data-i18n="sendTest">Отправить тест</button>
       </div>
     </div>
-    <p class="hint">Топик — как пароль: тот, кто его знает, читает
+    <p class="hint" data-i18n="notifyTopicHint">Топик — как пароль: тот, кто его знает, читает
     уведомления. Не публикуйте его; при необходимости смените на случайную
     строку. Ошибки доставки не влияют на сами копии — только на уведомление.</p>
   </div>
   <div class="card">
-    <h2>История запусков</h2>
+    <h2 data-i18n="historyTitle">История запусков</h2>
     <table class="hist">
-      <thead><tr><th>Время</th><th>Задание</th><th>Статус</th><th>Длительность</th><th>Примечание</th></tr></thead>
+      <thead><tr><th data-i18n="thTime">Время</th><th data-i18n="thJob">Задание</th><th data-i18n="thStatus">Статус</th><th data-i18n="thDuration">Длительность</th><th data-i18n="thNote">Примечание</th></tr></thead>
       <tbody id="histBody"></tbody>
     </table>
-    <div id="histEmpty" class="muted" style="padding:12px" hidden>Запусков ещё не было.</div>
+    <div id="histEmpty" class="muted" style="padding:12px" hidden data-i18n="histEmpty">Запусков ещё не было.</div>
   </div>
 </section>
 
 </main>
 
-<footer>backupd — резервное копирование на базе rsync</footer>
+<footer data-i18n="footer">backupd — резервное копирование на базе rsync</footer>
 
 <!-- ==================== МОДАЛЬНОЕ ОКНО ЗАДАНИЯ ==================== -->
 <div id="jobModal" class="modal-bg hidden" onclick="if(event.target===this)closeJobForm()">
@@ -266,25 +277,25 @@ footer { text-align:center; color:#94a3b8; font-size:12px; padding:8px 0 26px; }
     <h2 id="modalTitle">Новое задание</h2>
     <div class="grid">
       <div>
-        <label>Имя задания</label>
-        <input type="text" id="f_name" placeholder="Например: Данные сервера">
+        <label data-i18n="fName">Имя задания</label>
+        <input type="text" id="f_name" data-i18n-ph="fNamePh" placeholder="Например: Данные сервера">
       </div>
 
       <div class="full">
-        <label>Тип источника</label>
+        <label data-i18n="fSrcType">Тип источника</label>
         <select id="f_stype" onchange="stypeChanged()">
-          <option value="local">Linux — локальный каталог</option>
-          <option value="smb">Windows — общая папка (SMB / CIFS)</option>
-          <option value="ssh">Windows — SSH (DeltaRSync)</option>
-          <option value="rsyncd">Linux — rsync-демон (rsyncd, без SSH)</option>
-          <option value="ftp">FTP-сервер (клиент lftp)</option>
+          <option value="local" data-i18n="srcLocalOpt">Linux — локальный каталог</option>
+          <option value="smb" data-i18n="srcSmbOpt">Windows — общая папка (SMB / CIFS)</option>
+          <option value="ssh" data-i18n="srcSshOpt">Windows — SSH (DeltaRSync)</option>
+          <option value="rsyncd" data-i18n="srcRsyncdOpt">Linux — rsync-демон (rsyncd, без SSH)</option>
+          <option value="ftp" data-i18n="srcFtpOpt">FTP-сервер (клиент lftp)</option>
         </select>
       </div>
 
       <!-- источник: локальный -->
       <div class="full" id="src_local">
         <div>
-          <label>Каталог источника (Linux)</label>
+          <label data-i18n="srcLocalDir">Каталог источника (Linux)</label>
           <input type="text" id="f_src_local" class="mono" placeholder="/var/data">
         </div>
       </div>
@@ -292,55 +303,55 @@ footer { text-align:center; color:#94a3b8; font-size:12px; padding:8px 0 26px; }
       <!-- источник: SMB -->
       <div class="full hidden" id="src_smb">
         <fieldset>
-          <legend>Общая папка Windows (SMB) — источник</legend>
+          <legend data-i18n="srcSmbLegend">Общая папка Windows (SMB) — источник</legend>
           <div class="row">
             <div style="flex:2">
-              <label>Адрес шары (можно с подкаталогом)</label>
+              <label data-i18n="shareAddrSub">Адрес шары (можно с подкаталогом)</label>
               <input type="text" id="f_src_smb_path" class="mono"
                      placeholder="//SERVER/Share или //SERVER/Share/subdir">
             </div>
             <div>
-              <label>Версия SMB (опц.)</label>
+              <label data-i18n="smbVers">Версия SMB (опц.)</label>
               <input type="text" id="f_src_smb_vers" class="mono" placeholder="3.0">
             </div>
           </div>
           <div class="row" style="margin-top:10px">
             <div>
-              <label>Пользователь</label>
+              <label data-i18n="user">Пользователь</label>
               <input type="text" id="f_src_smb_user">
             </div>
             <div>
-              <label>Пароль</label>
+              <label data-i18n="password">Пароль</label>
               <input type="password" id="f_src_smb_pass">
             </div>
           </div>
-          <div class="hint">Шара будет смонтирована на сервере (cifs), затем скопирована rsync.</div>
+          <div class="hint" data-i18n="srcSmbHint">Шара будет смонтирована на сервере (cifs), затем скопирована rsync.</div>
         </fieldset>
       </div>
 
       <!-- источник: SSH -->
       <div class="full hidden" id="src_ssh">
         <fieldset>
-          <legend>Windows через SSH — источник (OpenSSH Server + DeltaRSync)</legend>
+          <legend data-i18n="srcSshLegend">Windows через SSH — источник (OpenSSH Server + DeltaRSync)</legend>
           <div class="row">
             <div style="flex:2">
-              <label>Хост (IP или имя)</label>
+              <label data-i18n="host">Хост (IP или имя)</label>
               <input type="text" id="f_src_ssh_host" class="mono">
             </div>
             <div>
-              <label>Порт</label>
+              <label data-i18n="port">Порт</label>
               <input type="number" id="f_src_ssh_port" value="22">
             </div>
             <div>
-              <label>Пользователь</label>
+              <label data-i18n="user">Пользователь</label>
               <input type="text" id="f_src_ssh_user">
             </div>
           </div>
           <div style="margin-top:10px">
-            <label>Каталог на Windows</label>
+            <label data-i18n="winDir">Каталог на Windows</label>
             <input type="text" id="f_src_ssh_path" class="mono" placeholder="D:\Data">
           </div>
-          <div class="hint">rsync подтянет файлы с Windows по SSH: нужен ключ
+          <div class="hint" data-i18n-html="srcSshHint">rsync подтянет файлы с Windows по SSH: нужен ключ
           (<span class="mono">ssh-copy-id user@windows</span>).
           Одновременно с SSH-целью использовать нельзя (rsync поддерживает
           только один удалённый конец).</div>
@@ -350,36 +361,36 @@ footer { text-align:center; color:#94a3b8; font-size:12px; padding:8px 0 26px; }
       <!-- источник: rsyncd -->
       <div class="full hidden" id="src_rsyncd">
         <fieldset>
-          <legend>rsync-демон (rsyncd) — источник, без SSH</legend>
+          <legend data-i18n="srcRsyncdLegend">rsync-демон (rsyncd) — источник, без SSH</legend>
           <div class="row">
             <div style="flex:2">
-              <label>Хост (IP или имя)</label>
+              <label data-i18n="host">Хост (IP или имя)</label>
               <input type="text" id="f_src_rsyncd_host" class="mono" placeholder="192.168.1.50">
             </div>
             <div>
-              <label>Порт</label>
+              <label data-i18n="port">Порт</label>
               <input type="number" id="f_src_rsyncd_port" value="873">
             </div>
             <div>
-              <label>Модуль</label>
+              <label data-i18n="module">Модуль</label>
               <input type="text" id="f_src_rsyncd_module" class="mono" placeholder="backup">
             </div>
           </div>
           <div class="row" style="margin-top:10px">
             <div style="flex:2">
-              <label>Подпуть в модуле (опц.)</label>
+              <label data-i18n="moduleSub">Подпуть в модуле (опц.)</label>
               <input type="text" id="f_src_rsyncd_path" class="mono" placeholder="subdir">
             </div>
             <div>
-              <label>Пользователь (опц.)</label>
+              <label data-i18n="userOpt">Пользователь (опц.)</label>
               <input type="text" id="f_src_rsyncd_user">
             </div>
             <div>
-              <label>Пароль (опц.)</label>
+              <label data-i18n="passOpt">Пароль (опц.)</label>
               <input type="password" id="f_src_rsyncd_pass">
             </div>
           </div>
-          <div class="hint">Модуль должен быть определён в
+          <div class="hint" data-i18n-html="srcRsyncdHint">Модуль должен быть определён в
           <span class="mono">/etc/rsyncd.conf</span> на удалённой машине
           (порт 873 открыт в firewalld). Протокол не шифрует данные —
           используйте в доверенной сети.</div>
@@ -389,32 +400,32 @@ footer { text-align:center; color:#94a3b8; font-size:12px; padding:8px 0 26px; }
       <!-- источник: FTP (lftp) -->
       <div class="full hidden" id="src_ftp">
         <fieldset>
-          <legend>FTP-сервер — источник (копирование через lftp mirror)</legend>
+          <legend data-i18n="srcFtpLegend">FTP-сервер — источник (копирование через lftp mirror)</legend>
           <div class="row">
             <div style="flex:2">
-              <label>Хост (IP или имя)</label>
+              <label data-i18n="host">Хост (IP или имя)</label>
               <input type="text" id="f_src_ftp_host" class="mono" placeholder="192.168.1.50">
             </div>
             <div>
-              <label>Порт</label>
+              <label data-i18n="port">Порт</label>
               <input type="number" id="f_src_ftp_port" value="21">
             </div>
             <div>
-              <label>Пользователь</label>
+              <label data-i18n="user">Пользователь</label>
               <input type="text" id="f_src_ftp_user">
             </div>
           </div>
           <div class="row" style="margin-top:10px">
             <div style="flex:2">
-              <label>Каталог на FTP-сервере</label>
-              <input type="text" id="f_src_ftp_path" class="mono" placeholder="/" title="Пусто — корень FTP-сервера (/)">
+              <label data-i18n="ftpDir">Каталог на FTP-сервере</label>
+              <input type="text" id="f_src_ftp_path" class="mono" placeholder="/" data-i18n-title="ftpDirTitle" title="Пусто — корень FTP-сервера (/)">
             </div>
             <div>
-              <label>Пароль</label>
+              <label data-i18n="password">Пароль</label>
               <input type="password" id="f_src_ftp_pass">
             </div>
           </div>
-          <div class="hint">FTP-сервер запущен на источнике. Копирование
+          <div class="hint" data-i18n="srcFtpHint">FTP-сервер запущен на источнике. Копирование
           выполняется lftp (команда mirror) — всегда одна актуальная копия,
           без снапшотов. Протокол не шифрует данные — используйте в
           доверенной сети.</div>
@@ -422,67 +433,67 @@ footer { text-align:center; color:#94a3b8; font-size:12px; padding:8px 0 26px; }
       </div>
 
       <div class="full">
-        <label>Тип цели</label>
+        <label data-i18n="fDstType">Тип цели</label>
         <select id="f_dtype" onchange="dtypeChanged()">
-          <option value="smb">Windows — общая папка (SMB / CIFS)</option>
-          <option value="ssh">Windows — SSH + rsync (DeltaRSync)</option>
-          <option value="rsyncd">Linux — rsync-демон (rsyncd, без SSH)</option>
-          <option value="ftp">FTP-сервер (клиент lftp)</option>
-          <option value="local">Локальный каталог (тестирование)</option>
+          <option value="smb" data-i18n="srcSmbOpt">Windows — общая папка (SMB / CIFS)</option>
+          <option value="ssh" data-i18n="dstSshOpt">Windows — SSH + rsync (DeltaRSync)</option>
+          <option value="rsyncd" data-i18n="srcRsyncdOpt">Linux — rsync-демон (rsyncd, без SSH)</option>
+          <option value="ftp" data-i18n="srcFtpOpt">FTP-сервер (клиент lftp)</option>
+          <option value="local" data-i18n="dstLocalOpt">Локальный каталог (тестирование)</option>
         </select>
       </div>
 
       <!-- SMB -->
       <div class="full" id="dst_smb">
         <fieldset>
-          <legend>Общая папка Windows (SMB)</legend>
+          <legend data-i18n="dstSmbLegend">Общая папка Windows (SMB)</legend>
           <div class="row">
             <div style="flex:2">
-              <label>Адрес шары</label>
+              <label data-i18n="shareAddr">Адрес шары</label>
               <input type="text" id="f_smb_path" class="mono" placeholder="//SERVER/Backup или SERVER\Backup">
             </div>
             <div>
-              <label>Версия SMB (опц.)</label>
+              <label data-i18n="smbVers">Версия SMB (опц.)</label>
               <input type="text" id="f_smb_vers" class="mono" placeholder="3.0">
             </div>
           </div>
           <div class="row" style="margin-top:10px">
             <div>
-              <label>Пользователь</label>
+              <label data-i18n="user">Пользователь</label>
               <input type="text" id="f_smb_user" placeholder="backup">
             </div>
             <div>
-              <label>Пароль</label>
+              <label data-i18n="password">Пароль</label>
               <input type="password" id="f_smb_pass" placeholder="••••••••">
             </div>
           </div>
-          <div class="hint">На Linux должны быть установлены cifs-utils; служба выполняется от root (или с правами mount).</div>
+          <div class="hint" data-i18n="dstSmbHint">На Linux должны быть установлены cifs-utils; служба выполняется от root (или с правами mount).</div>
         </fieldset>
       </div>
 
       <!-- SSH -->
       <div class="full hidden" id="dst_ssh">
         <fieldset>
-          <legend>Windows через SSH (нужен OpenSSH Server и DeltaRSync на Windows)</legend>
+          <legend data-i18n="dstSshLegend">Windows через SSH (нужен OpenSSH Server и DeltaRSync на Windows)</legend>
           <div class="row">
             <div style="flex:2">
-              <label>Хост (IP или имя)</label>
+              <label data-i18n="host">Хост (IP или имя)</label>
               <input type="text" id="f_ssh_host" class="mono" placeholder="192.168.1.50">
             </div>
             <div>
-              <label>Порт</label>
+              <label data-i18n="port">Порт</label>
               <input type="number" id="f_ssh_port" value="22">
             </div>
             <div>
-              <label>Пользователь</label>
+              <label data-i18n="user">Пользователь</label>
               <input type="text" id="f_ssh_user">
             </div>
           </div>
           <div style="margin-top:10px">
-            <label>Каталог на Windows</label>
+            <label data-i18n="winDir">Каталог на Windows</label>
             <input type="text" id="f_ssh_path" class="mono" placeholder="C:\Backup">
           </div>
-          <div class="hint">Для SSH на Linux нужен ключ: <span class="mono">ssh-keygen -t ed25519</span>,
+          <div class="hint" data-i18n-html="dstSshHint">Для SSH на Linux нужен ключ: <span class="mono">ssh-keygen -t ed25519</span>,
           затем <span class="mono">ssh-copy-id user@windows</span> (или добавить публичный ключ в %USERPROFILE%\.ssh\authorized_keys).</div>
         </fieldset>
       </div>
@@ -490,36 +501,36 @@ footer { text-align:center; color:#94a3b8; font-size:12px; padding:8px 0 26px; }
       <!-- rsyncd -->
       <div class="full hidden" id="dst_rsyncd">
         <fieldset>
-          <legend>rsync-демон (rsyncd) — цель, без SSH</legend>
+          <legend data-i18n="dstRsyncdLegend">rsync-демон (rsyncd) — цель, без SSH</legend>
           <div class="row">
             <div style="flex:2">
-              <label>Хост (IP или имя)</label>
+              <label data-i18n="host">Хост (IP или имя)</label>
               <input type="text" id="f_rsyncd_host" class="mono" placeholder="192.168.1.50">
             </div>
             <div>
-              <label>Порт</label>
+              <label data-i18n="port">Порт</label>
               <input type="number" id="f_rsyncd_port" value="873">
             </div>
             <div>
-              <label>Модуль</label>
+              <label data-i18n="module">Модуль</label>
               <input type="text" id="f_rsyncd_module" class="mono" placeholder="backup">
             </div>
           </div>
           <div class="row" style="margin-top:10px">
             <div style="flex:2">
-              <label>Подпуть в модуле (опц.)</label>
+              <label data-i18n="moduleSub">Подпуть в модуле (опц.)</label>
               <input type="text" id="f_rsyncd_path" class="mono" placeholder="subdir">
             </div>
             <div>
-              <label>Пользователь (опц.)</label>
+              <label data-i18n="userOpt">Пользователь (опц.)</label>
               <input type="text" id="f_rsyncd_user">
             </div>
             <div>
-              <label>Пароль (опц.)</label>
+              <label data-i18n="passOpt">Пароль (опц.)</label>
               <input type="password" id="f_rsyncd_pass">
             </div>
           </div>
-          <div class="hint">Модуль в <span class="mono">/etc/rsyncd.conf</span>
+          <div class="hint" data-i18n-html="dstRsyncdHint">Модуль в <span class="mono">/etc/rsyncd.conf</span>
           должен разрешать запись (<span class="mono">read only = no</span>).
           Для rsyncd-цели снапшоты всегда полные копии (жёсткие ссылки
           на удалённой машине недоступны). Протокол не шифрует данные.</div>
@@ -529,32 +540,32 @@ footer { text-align:center; color:#94a3b8; font-size:12px; padding:8px 0 26px; }
       <!-- FTP (lftp) -->
       <div class="full hidden" id="dst_ftp">
         <fieldset>
-          <legend>FTP-сервер — цель (копирование через lftp mirror)</legend>
+          <legend data-i18n="dstFtpLegend">FTP-сервер — цель (копирование через lftp mirror)</legend>
           <div class="row">
             <div style="flex:2">
-              <label>Хост (IP или имя)</label>
+              <label data-i18n="host">Хост (IP или имя)</label>
               <input type="text" id="f_dst_ftp_host" class="mono" placeholder="192.168.1.50">
             </div>
             <div>
-              <label>Порт</label>
+              <label data-i18n="port">Порт</label>
               <input type="number" id="f_dst_ftp_port" value="21">
             </div>
             <div>
-              <label>Пользователь</label>
+              <label data-i18n="user">Пользователь</label>
               <input type="text" id="f_dst_ftp_user">
             </div>
           </div>
           <div class="row" style="margin-top:10px">
             <div style="flex:2">
-              <label>Каталог на FTP-сервере</label>
-              <input type="text" id="f_dst_ftp_path" class="mono" placeholder="/" title="Пусто — корень FTP-сервера (/)">
+              <label data-i18n="ftpDir">Каталог на FTP-сервере</label>
+              <input type="text" id="f_dst_ftp_path" class="mono" placeholder="/" data-i18n-title="ftpDirTitle" title="Пусто — корень FTP-сервера (/)">
             </div>
             <div>
-              <label>Пароль</label>
+              <label data-i18n="password">Пароль</label>
               <input type="password" id="f_dst_ftp_pass">
             </div>
           </div>
-          <div class="hint">Копирование выполняется lftp (команда mirror) —
+          <div class="hint" data-i18n="dstFtpHint">Копирование выполняется lftp (команда mirror) —
           всегда одна актуальная копия, без снапшотов. Протокол не шифрует
           данные — используйте в доверенной сети.</div>
         </fieldset>
@@ -563,96 +574,96 @@ footer { text-align:center; color:#94a3b8; font-size:12px; padding:8px 0 26px; }
       <!-- LOCAL -->
       <div class="full hidden" id="dst_local">
         <div>
-          <label>Каталог назначения</label>
+          <label data-i18n="dstLocalDir">Каталог назначения</label>
           <input type="text" id="f_local_path" class="mono" placeholder="/mnt/backup">
         </div>
       </div>
 
       <div>
-        <label>Режим копирования</label>
+        <label data-i18n="fMode">Режим копирования</label>
         <select id="f_mode" onchange="modeChanged()">
-          <option value="incremental">Инкрементальный (снапшоты, жёсткие ссылки)</option>
-          <option value="full">Полное (снапшоты без ссылок)</option>
-          <option value="mirror">Зеркало (одна копия)</option>
+          <option value="incremental" data-i18n="modeIncrOpt">Инкрементальный (снапшоты, жёсткие ссылки)</option>
+          <option value="full" data-i18n="modeFullOpt">Полное (снапшоты без ссылок)</option>
+          <option value="mirror" data-i18n="modeMirrorOpt">Зеркало (одна копия)</option>
         </select>
       </div>
       <div id="fullEveryWrap">
-        <label>Полное копирование каждые, дней</label>
+        <label data-i18n="fullEvery">Полное копирование каждые, дней</label>
         <input type="number" id="f_fullevery" min="1" value="7">
-        <div class="hint">Для инкрементального режима: раз в N дней снапшот делается полностью (без ссылки на предыдущий).</div>
+        <div class="hint" data-i18n="fullEveryHint">Для инкрементального режима: раз в N дней снапшот делается полностью (без ссылки на предыдущий).</div>
       </div>
 
       <div class="full" id="retWrap">
         <fieldset>
-          <legend>Удержание снапшотов (что старше — удаляется)</legend>
+          <legend data-i18n="retLegend">Удержание снапшотов (что старше — удаляется)</legend>
           <div class="row">
-            <div><label>Последних снапшотов (всех)</label>
+            <div><label data-i18n="retS">Последних снапшотов (всех)</label>
               <input type="number" id="f_ret_s" min="0" value="7"></div>
-            <div><label>Последних дней (по 1 в день)</label>
+            <div><label data-i18n="retD">Последних дней (по 1 в день)</label>
               <input type="number" id="f_ret_d" min="0" value="7"></div>
-            <div><label>Последних недель (по 1 в неделю)</label>
+            <div><label data-i18n="retW">Последних недель (по 1 в неделю)</label>
               <input type="number" id="f_ret_w" min="0" value="4"></div>
-            <div><label>Последних месяцев (по 1 в месяц)</label>
+            <div><label data-i18n="retM">Последних месяцев (по 1 в месяц)</label>
               <input type="number" id="f_ret_m" min="0" value="6"></div>
           </div>
         </fieldset>
       </div>
 
       <div>
-        <label>Расписание</label>
+        <label data-i18n="fSched">Расписание</label>
         <select id="f_sched" onchange="schedChanged()">
-          <option value="manual">Вручную (по кнопке)</option>
-          <option value="interval">Каждые N минут</option>
-          <option value="daily">Ежедневно</option>
-          <option value="weekly">Раз в неделю</option>
+          <option value="manual" data-i18n="schedManualOpt">Вручную (по кнопке)</option>
+          <option value="interval" data-i18n="schedIntervalOpt">Каждые N минут</option>
+          <option value="daily" data-i18n="schedDailyOpt">Ежедневно</option>
+          <option value="weekly" data-i18n="schedWeeklyOpt">Раз в неделю</option>
         </select>
       </div>
       <div id="sched_interval" class="hidden">
-        <label>Интервал, минут</label>
+        <label data-i18n="intervalMin">Интервал, минут</label>
         <input type="number" id="f_minutes" min="1" value="60">
       </div>
       <div id="sched_daily" class="hidden">
-        <label>Время</label>
+        <label data-i18n="time">Время</label>
         <input type="time" id="f_time" value="02:00">
       </div>
       <div id="sched_weekly" class="hidden">
         <div class="row">
           <div>
-            <label>День недели</label>
+            <label data-i18n="weekday">День недели</label>
             <select id="f_weekday">
-              <option value="0">Понедельник</option><option value="1">Вторник</option>
-              <option value="2">Среда</option><option value="3">Четверг</option>
-              <option value="4">Пятница</option><option value="5">Суббота</option>
-              <option value="6">Воскресенье</option>
+              <option value="0" data-i18n="wd0">Понедельник</option><option value="1" data-i18n="wd1">Вторник</option>
+              <option value="2" data-i18n="wd2">Среда</option><option value="3" data-i18n="wd3">Четверг</option>
+              <option value="4" data-i18n="wd4">Пятница</option><option value="5" data-i18n="wd5">Суббота</option>
+              <option value="6" data-i18n="wd6">Воскресенье</option>
             </select>
           </div>
-          <div><label>Время</label><input type="time" id="f_time_w" value="02:00"></div>
+          <div><label data-i18n="time">Время</label><input type="time" id="f_time_w" value="02:00"></div>
         </div>
       </div>
 
       <div class="full">
-        <label>Исключения (по одному на строку)</label>
+        <label data-i18n="excludes">Исключения (по одному на строку)</label>
         <textarea id="f_exclude" placeholder="*.tmp&#10;cache/&#10;*.log"></textarea>
       </div>
 
       <div class="full">
         <fieldset>
-          <legend>Дополнительные параметры</legend>
+          <legend data-i18n="advLegend">Дополнительные параметры</legend>
           <div class="row">
             <div class="checkbox"><input type="checkbox" id="f_compress" checked>
-              <span>Сжатие при передаче</span></div>
+              <span data-i18n="compress">Сжатие при передаче</span></div>
             <div class="checkbox"><input type="checkbox" id="f_checksum">
-              <span>Проверка контрольных сумм (медленнее)</span></div>
+              <span data-i18n="checksum">Проверка контрольных сумм (медленнее)</span></div>
             <div class="checkbox"><input type="checkbox" id="f_delete">
-              <span>Удалять лишние файлы (только режим «Зеркало»)</span></div>
+              <span data-i18n="delExtra">Удалять лишние файлы (только режим «Зеркало»)</span></div>
           </div>
           <div class="row" style="margin-top:10px">
             <div style="max-width:220px">
-              <label>Лимит скорости, КБ/с (0 = без лимита)</label>
+              <label data-i18n="bwlimit">Лимит скорости, КБ/с (0 = без лимита)</label>
               <input type="number" id="f_bwlimit" min="0" value="0">
             </div>
             <div class="checkbox" style="align-self:flex-end; padding-bottom:8px">
-              <input type="checkbox" id="f_enabled" checked><span>Задание включено</span>
+              <input type="checkbox" id="f_enabled" checked><span data-i18n="jobEnabled">Задание включено</span>
             </div>
           </div>
         </fieldset>
@@ -661,45 +672,45 @@ footer { text-align:center; color:#94a3b8; font-size:12px; padding:8px 0 26px; }
       <!-- Настройки lftp (только для FTP-варианта) -->
       <div class="full hidden" id="lftpWrap">
         <fieldset>
-          <legend>Настройки lftp (FTP-копирование)</legend>
+          <legend data-i18n="lftpLegend">Настройки lftp (FTP-копирование)</legend>
           <div class="row">
             <div>
-              <label>Параллельные потоки (файлов)</label>
+              <label data-i18n="lftpParallel">Параллельные потоки (файлов)</label>
               <input type="number" id="f_lftp_parallel" min="1" max="32" value="4">
-              <div class="hint">Сколько файлов lftp копирует одновременно (mirror --parallel).</div>
+              <div class="hint" data-i18n="lftpParallelHint">Сколько файлов lftp копирует одновременно (mirror --parallel).</div>
             </div>
             <div>
-              <label>Потоков на файл (pget)</label>
+              <label data-i18n="lftpPget">Потоков на файл (pget)</label>
               <input type="number" id="f_lftp_pget" min="1" max="16" value="1">
-              <div class="hint">1 = выключено; &gt;1 — каждый файл копируется несколькими соединениями (mirror --use-pget-n).</div>
+              <div class="hint" data-i18n="lftpPgetHint">1 = выключено; &gt;1 — каждый файл копируется несколькими соединениями (mirror --use-pget-n).</div>
             </div>
           </div>
           <div class="row" style="margin-top:10px">
             <div>
-              <label>Буфер передач, КиБ</label>
+              <label data-i18n="lftpBuffer">Буфер передач, КиБ</label>
               <input type="number" id="f_lftp_buffer" min="0" max="1048576" step="64" value="1024">
-              <div class="hint">xfer:buffer-size. 1024 (1 МБ) — измерено быстрее на мелких файлах; 0 = дефолт lftp (64 КБ).</div>
+              <div class="hint" data-i18n="lftpBufferHint">xfer:buffer-size. 1024 (1 МБ) — измерено быстрее на мелких файлах; 0 = дефолт lftp (64 КБ).</div>
             </div>
             <div class="checkbox" style="align-self:end">
               <input type="checkbox" id="f_lftp_only_newer" checked>
-              <span>Только новые файлы (mirror --only-newer)</span>
+              <span data-i18n="lftpOnlyNewer">Только новые файлы (mirror --only-newer)</span>
             </div>
             <div class="checkbox" style="align-self:end">
               <input type="checkbox" id="f_lftp_continue">
-              <span>Продолжать незавершённые (сравнение списков, без mirror)</span>
+              <span data-i18n="lftpContinue">Продолжать незавершённые (сравнение списков, без mirror)</span>
             </div>
             <div class="checkbox" style="align-self:end">
               <input type="checkbox" id="f_lftp_passive" checked>
-              <span>Пассивный режим FTP (ftp:passive-mode)</span>
+              <span data-i18n="lftpPassive">Пассивный режим FTP (ftp:passive-mode)</span>
             </div>
           </div>
-          <div class="hint">Лимит скорости для lftp задаётся полем «Лимит скорости, КБ/с» выше.</div>
+          <div class="hint" data-i18n="lftpRateHint">Лимит скорости для lftp задаётся полем «Лимит скорости, КБ/с» выше.</div>
         </fieldset>
       </div>
     </div>
     <div class="modal-footer">
-      <button class="btn" onclick="closeJobForm()">Отмена</button>
-      <button class="btn primary" onclick="saveJob()">Сохранить</button>
+      <button class="btn" onclick="closeJobForm()" data-i18n="cancel">Отмена</button>
+      <button class="btn primary" onclick="saveJob()" data-i18n="save">Сохранить</button>
     </div>
   </div>
 </div>
@@ -708,10 +719,10 @@ footer { text-align:center; color:#94a3b8; font-size:12px; padding:8px 0 26px; }
 <div id="loginScreen" class="login hidden">
   <div class="login-box">
     <h1>backupd</h1>
-    <div class="sub muted">Доступ к интерфейсу по паролю</div>
-    <input type="password" id="loginPass" placeholder="Пароль" autocomplete="current-password"
+    <div class="sub muted" data-i18n="loginSub">Доступ к интерфейсу по паролю</div>
+    <input type="password" id="loginPass" data-i18n-ph="loginPassPh" placeholder="Пароль" autocomplete="current-password"
            onkeydown="if (event.key === 'Enter') doLogin()">
-    <button class="btn primary" onclick="doLogin()">Войти</button>
+    <button class="btn primary" onclick="doLogin()" data-i18n="loginBtn">Войти</button>
     <div id="loginErr" class="login-err" hidden></div>
   </div>
 </div>
@@ -722,8 +733,377 @@ let token = localStorage.getItem("backupd_token") || "";
 let currentTab = "jobs";
 let editingId = null;
 let lastLogLen = 0;
+let LANG = "ru";  // язык интерфейса (ru/en) — см. I18N ниже
 
-/* ---------------- API ---------------- */
+/* ---------------- i18n (ru / en) ---------------- */
+const I18N = {
+ru: {
+  // (страница, вкладки, задания, журнал)
+  title: "backupd — резервное копирование",
+  headerSub: "резервное копирование Linux → Windows (rsync)",
+  tabJobs: "Задания", tabLog: "Журнал", tabSystem: "Система",
+  footer: "backupd — резервное копирование на базе rsync",
+  jobsTitle: "Задания резервного копирования",
+  addJob: "＋ Добавить задание",
+  thOn: "Вкл", thName: "Имя", thSource: "Источник", thDest: "Цель",
+  thMode: "Режим", thSchedule: "Расписание", thLastRun: "Последний запуск",
+  thNext: "Следующий", thActions: "Действия",
+  jobsEmpty: "Заданий пока нет. Нажмите «Добавить задание».",
+  logTitle: "Журнал", refresh: "Обновить",
+  logSelectJob: "Выберите задание…", logEmpty: "(журнал пуст)",
+  // (вкладка «Система»: язык, состояние)
+  langTitle: "Язык интерфейса",
+  sysStatusTitle: "Состояние сервера",
+  sysVer: "Версия backupd", sysUptime: "Время работы",
+  sysDataDir: "Каталог данных", sysJobs: "Заданий",
+  sysSmbMount: "Монтирование SMB", sysSmbUnmount: "Отключение SMB",
+  rsyncNotFound: "rsync не найден!",
+  notFound: "НЕ НАЙДЕН",
+  lftpNotFound: "НЕ НАЙДЕН (нужен для FTP-заданий)",
+  mountViaSudo: "через sudo (--use-sudo)",
+  mountNoSudo: "без sudo (нужны root-права или --use-sudo)",
+  fusermountOk: "{0}, резервно — umount",
+  fusermountMissing: "НЕ НАЙДЕН (нужен fuse/fuse3, иначе только umount)",
+  tokenSet: "пароль задан (авторизация включена)",
+  tokenNotSet: "не задан (открытый доступ)",
+  historyTitle: "История запусков",
+  thTime: "Время", thJob: "Задание", thStatus: "Статус",
+  thDuration: "Длительность", thNote: "Примечание",
+  histEmpty: "Запусков ещё не было.",
+  testRun: "тестовый прогон",
+  // (доступ и push-уведомления)
+  accessTitle: "Доступ (пароль)",
+  authHint: "Если задан пароль, для доступа к интерфейсу нужно войти. Сессия действует 12 часов. Программный доступ к API: получить токен <span class=\"mono\">POST /api/login</span> и передавать его в заголовке <span class=\"mono\">Authorization: Bearer &lt;токен&gt;</span>.",
+  setPasswordBtn: "Задать / сменить пароль",
+  disableAuth: "Отключить авторизацию",
+  logout: "Выйти",
+  notifyTitle: "Push-уведомления (ntfy)",
+  notifyHint: "Сообщения о <b>начале</b> и <b>завершении</b> каждого задания — на ваше устройство. Работает через публичный сервер <span class=\"mono\">ntfy.sh</span> (интернет) или через собственный ntfy-сервер в локальной сети (например <span class=\"mono\">http://192.168.x.x:2000</span>). Клиенты: <b>Android</b> — приложение «ntfy», <b>Linux</b> — ntfy desktop (или скрипт), <b>Windows</b> — «ntfy for Windows». В приложении подпишитесь на сервер и топик из полей ниже.",
+  ntfyServer: "Сервер ntfy", ntfyTopic: "Топик (имя подписки в приложении)",
+  ntfyEnable: "Включить push-уведомления",
+  save: "Сохранить", sendTest: "Отправить тест",
+  notifyTopicHint: "Топик — как пароль: тот, кто его знает, читает уведомления. Не публикуйте его; при необходимости смените на случайную строку. Ошибки доставки не влияют на сами копии — только на уведомление.",
+  notifyOn: "включены", notifyOff: "выключены",
+  notifyOnSaved: "включены (сохранено)", notifyOffSaved: "выключены (сохранено)",
+  errPrefix: "ошибка: ",
+  testSending: "отправляю тест…", testSent: "тест отправлен ✓",
+  testSentOff: "тест отправлен, уведомления выключены",
+  pwPrompt: "Введите новый пароль (минимум 4 символа):",
+  pwShort: "Пароль должен быть не короче 4 символов",
+  pwRepeat: "Повторите пароль:", pwMismatch: "Пароли не совпадают",
+  pwSet: "Пароль установлен. Теперь для входа в интерфейс он потребуется.",
+  clearAuthConfirm: "Отключить авторизацию? Интерфейс будет доступен без пароля всем, кто может подключиться к серверу.",
+  // (авторизация и соединение)
+  connFailed: "Не удалось подключиться к серверу backupd: {0}",
+  connFailedShort: "Не удалось подключиться к серверу",
+  loginRequired: "Требуется вход: сессия истекла или токен отклонён",
+  loggedOut: "Вы вышли из интерфейса",
+  authOk: "🔒 авторизован", authNeeded: "🔒 требуется вход",
+  openAccess: "открытый доступ (пароль не задан)",
+  loginSub: "Доступ к интерфейсу по паролю",
+  loginPassPh: "Пароль", loginBtn: "Войти",
+  // (статусы, время, кнопки, прогресс)
+  stRunning: "выполняется…", stOk: "успешно", stError: "ошибка",
+  stStopped: "остановлено", stNever: "не запускалось",
+  metaDuration: "длительность ", metaCopied: "скопировано ",
+  btnRun: "Запустить сейчас",
+  btnContinue: "Продолжить после обрыва: сравнение списков (источник − скопировано), недостающие файлы копируются без mirror, обрезанный — заново целиком (остальные опции задания)",
+  btnDryRun: "Тестовый прогон (dry-run)", btnStop: "Остановить",
+  btnLog: "Журнал", btnEdit: "Изменить", btnDel: "Удалить",
+  scanPending: " (итог определяется…)", scanUnknown: " (итог не определён)",
+  filesWord: " файлов", remain: "осталось ",
+  delJobConfirm: "Удалить задание «{0}»?\nФайлы в месте назначения удалены не будут.",
+  editJob: "Изменить задание", newJob: "Новое задание",
+  modeIncr: "инкремент.", modeFull: "полное", modeMirror: "зеркало",
+  schedManual: "вручную", schedEvery: "каждые {0} мин",
+  schedDaily: "ежедневно {0}", schedWeekly: "каждый {0} {1}",
+  wd: "Пн;Вт;Ср;Чт;Пт;Сб;Вс",
+  unitS: "с", unitMin: "мин", unitH: "ч", unitD: "д",
+  unitGB: "ГБ", unitMB: "МБ", unitKB: "КБ",
+  // (форма задания: источник)
+  fName: "Имя задания", fNamePh: "Например: Данные сервера",
+  fSrcType: "Тип источника",
+  srcLocalOpt: "Linux — локальный каталог",
+  srcSmbOpt: "Windows — общая папка (SMB / CIFS)",
+  srcSshOpt: "Windows — SSH (DeltaRSync)",
+  srcRsyncdOpt: "Linux — rsync-демон (rsyncd, без SSH)",
+  srcFtpOpt: "FTP-сервер (клиент lftp)",
+  srcLocalDir: "Каталог источника (Linux)",
+  srcSmbLegend: "Общая папка Windows (SMB) — источник",
+  shareAddrSub: "Адрес шары (можно с подкаталогом)",
+  smbVers: "Версия SMB (опц.)", user: "Пользователь", password: "Пароль",
+  srcSmbHint: "Шара будет смонтирована на сервере (cifs), затем скопирована rsync.",
+  srcSshLegend: "Windows через SSH — источник (OpenSSH Server + DeltaRSync)",
+  host: "Хост (IP или имя)", port: "Порт", winDir: "Каталог на Windows",
+  srcSshHint: "rsync подтянет файлы с Windows по SSH: нужен ключ (<span class=\"mono\">ssh-copy-id user@windows</span>). Одновременно с SSH-целью использовать нельзя (rsync поддерживает только один удалённый конец).",
+  srcRsyncdLegend: "rsync-демон (rsyncd) — источник, без SSH",
+  module: "Модуль", moduleSub: "Подпуть в модуле (опц.)",
+  userOpt: "Пользователь (опц.)", passOpt: "Пароль (опц.)",
+  srcRsyncdHint: "Модуль должен быть определён в <span class=\"mono\">/etc/rsyncd.conf</span> на удалённой машине (порт 873 открыт в firewalld). Протокол не шифрует данные — используйте в доверенной сети.",
+  srcFtpLegend: "FTP-сервер — источник (копирование через lftp mirror)",
+  ftpDir: "Каталог на FTP-сервере",
+  ftpDirTitle: "Пусто — корень FTP-сервера (/)",
+  srcFtpHint: "FTP-сервер запущен на источнике. Копирование выполняется lftp (команда mirror) — всегда одна актуальная копия, без снапшотов. Протокол не шифрует данные — используйте в доверенной сети.",
+  // (форма задания: цель, режим, удержание, расписание)
+  fDstType: "Тип цели",
+  dstSshOpt: "Windows — SSH + rsync (DeltaRSync)",
+  dstLocalOpt: "Локальный каталог (тестирование)",
+  dstSmbLegend: "Общая папка Windows (SMB)", shareAddr: "Адрес шары",
+  dstSmbHint: "На Linux должны быть установлены cifs-utils; служба выполняется от root (или с правами mount).",
+  dstSshLegend: "Windows через SSH (нужен OpenSSH Server и DeltaRSync на Windows)",
+  dstSshHint: "Для SSH на Linux нужен ключ: <span class=\"mono\">ssh-keygen -t ed25519</span>, затем <span class=\"mono\">ssh-copy-id user@windows</span> (или добавить публичный ключ в %USERPROFILE%\\.ssh\\authorized_keys).",
+  dstRsyncdLegend: "rsync-демон (rsyncd) — цель, без SSH",
+  dstRsyncdHint: "Модуль в <span class=\"mono\">/etc/rsyncd.conf</span> должен разрешать запись (<span class=\"mono\">read only = no</span>). Для rsyncd-цели снапшоты всегда полные копии (жёсткие ссылки на удалённой машине недоступны). Протокол не шифрует данные.",
+  dstFtpLegend: "FTP-сервер — цель (копирование через lftp mirror)",
+  dstFtpHint: "Копирование выполняется lftp (команда mirror) — всегда одна актуальная копия, без снапшотов. Протокол не шифрует данные — используйте в доверенной сети.",
+  dstLocalDir: "Каталог назначения",
+  fMode: "Режим копирования",
+  modeIncrOpt: "Инкрементальный (снапшоты, жёсткие ссылки)",
+  modeFullOpt: "Полное (снапшоты без ссылок)",
+  modeMirrorOpt: "Зеркало (одна копия)",
+  fullEvery: "Полное копирование каждые, дней",
+  fullEveryHint: "Для инкрементального режима: раз в N дней снапшот делается полностью (без ссылки на предыдущий).",
+  retLegend: "Удержание снапшотов (что старше — удаляется)",
+  retS: "Последних снапшотов (всех)",
+  retD: "Последних дней (по 1 в день)",
+  retW: "Последних недель (по 1 в неделю)",
+  retM: "Последних месяцев (по 1 в месяц)",
+  fSched: "Расписание",
+  schedManualOpt: "Вручную (по кнопке)",
+  schedIntervalOpt: "Каждые N минут",
+  schedDailyOpt: "Ежедневно",
+  schedWeeklyOpt: "Раз в неделю",
+  intervalMin: "Интервал, минут", time: "Время",
+  weekday: "День недели",
+  wd0: "Понедельник", wd1: "Вторник", wd2: "Среда", wd3: "Четверг",
+  wd4: "Пятница", wd5: "Суббота", wd6: "Воскресенье",
+  excludes: "Исключения (по одному на строку)",
+  // (форма задания: доп. параметры, lftp)
+  advLegend: "Дополнительные параметры",
+  compress: "Сжатие при передаче",
+  checksum: "Проверка контрольных сумм (медленнее)",
+  delExtra: "Удалять лишние файлы (только режим «Зеркало»)",
+  bwlimit: "Лимит скорости, КБ/с (0 = без лимита)",
+  jobEnabled: "Задание включено",
+  lftpLegend: "Настройки lftp (FTP-копирование)",
+  lftpParallel: "Параллельные потоки (файлов)",
+  lftpParallelHint: "Сколько файлов lftp копирует одновременно (mirror --parallel).",
+  lftpPget: "Потоков на файл (pget)",
+  lftpPgetHint: "1 = выключено; >1 — каждый файл копируется несколькими соединениями (mirror --use-pget-n).",
+  lftpBuffer: "Буфер передач, КиБ",
+  lftpBufferHint: "xfer:buffer-size. 1024 (1 МБ) — измерено быстрее на мелких файлах; 0 = дефолт lftp (64 КБ).",
+  lftpOnlyNewer: "Только новые файлы (mirror --only-newer)",
+  lftpContinue: "Продолжать незавершённые (сравнение списков, без mirror)",
+  lftpPassive: "Пассивный режим FTP (ftp:passive-mode)",
+  lftpRateHint: "Лимит скорости для lftp задаётся полем «Лимит скорости, КБ/с» выше.",
+  cancel: "Отмена",
+},
+en: {
+  // (page, tabs, jobs, log)
+  title: "backupd — file backup",
+  headerSub: "file backup Linux → Windows (rsync)",
+  tabJobs: "Jobs", tabLog: "Log", tabSystem: "System",
+  footer: "backupd — rsync-based file backup",
+  jobsTitle: "Backup jobs",
+  addJob: "＋ Add job",
+  thOn: "On", thName: "Name", thSource: "Source", thDest: "Destination",
+  thMode: "Mode", thSchedule: "Schedule", thLastRun: "Last run",
+  thNext: "Next", thActions: "Actions",
+  jobsEmpty: "No jobs yet. Click \"Add job\".",
+  logTitle: "Log", refresh: "Refresh",
+  logSelectJob: "Select a job…", logEmpty: "(log is empty)",
+  // (System tab: language, status)
+  langTitle: "Interface language",
+  sysStatusTitle: "Server status",
+  sysVer: "backupd version", sysUptime: "Uptime",
+  sysDataDir: "Data directory", sysJobs: "Jobs",
+  sysSmbMount: "SMB mounting", sysSmbUnmount: "SMB unmount",
+  rsyncNotFound: "rsync not found!",
+  notFound: "NOT FOUND",
+  lftpNotFound: "NOT FOUND (required for FTP jobs)",
+  mountViaSudo: "via sudo (--use-sudo)",
+  mountNoSudo: "without sudo (needs root or --use-sudo)",
+  fusermountOk: "{0}, fallback — umount",
+  fusermountMissing: "NOT FOUND (needs fuse/fuse3, otherwise umount only)",
+  tokenSet: "password set (auth enabled)",
+  tokenNotSet: "not set (open access)",
+  historyTitle: "Run history",
+  thTime: "Time", thJob: "Job", thStatus: "Status",
+  thDuration: "Duration", thNote: "Note",
+  histEmpty: "No runs yet.",
+  testRun: "test run (dry-run)",
+  // (access and push notifications)
+  accessTitle: "Access (password)",
+  authHint: "If a password is set, you must log in to access the interface. Sessions last 12 hours. Programmatic API access: get a token with <span class=\"mono\">POST /api/login</span> and pass it in the <span class=\"mono\">Authorization: Bearer &lt;token&gt;</span> header.",
+  setPasswordBtn: "Set / change password",
+  disableAuth: "Disable authentication",
+  logout: "Log out",
+  notifyTitle: "Push notifications (ntfy)",
+  notifyHint: "Messages about the <b>start</b> and <b>finish</b> of every job — to your device. Works via the public <span class=\"mono\">ntfy.sh</span> server (internet) or your own ntfy server on the local network (e.g. <span class=\"mono\">http://192.168.x.x:2000</span>). Clients: <b>Android</b> — the \"ntfy\" app, <b>Linux</b> — ntfy desktop (or a script), <b>Windows</b> — \"ntfy for Windows\". In the app, subscribe to the server and topic from the fields below.",
+  ntfyServer: "ntfy server", ntfyTopic: "Topic (subscription name in the app)",
+  ntfyEnable: "Enable push notifications",
+  save: "Save", sendTest: "Send test",
+  notifyTopicHint: "The topic is like a password: whoever knows it can read the notifications. Do not publish it; replace it with a random string if needed. Delivery errors do not affect the copies themselves — only the notification.",
+  notifyOn: "enabled", notifyOff: "disabled",
+  notifyOnSaved: "enabled (saved)", notifyOffSaved: "disabled (saved)",
+  errPrefix: "error: ",
+  testSending: "sending test…", testSent: "test sent ✓",
+  testSentOff: "test sent, notifications disabled",
+  pwPrompt: "Enter a new password (minimum 4 characters):",
+  pwShort: "The password must be at least 4 characters long",
+  pwRepeat: "Repeat the password:", pwMismatch: "Passwords do not match",
+  pwSet: "Password set. It is now required to log in to the interface.",
+  clearAuthConfirm: "Disable authentication? The interface will be accessible without a password to anyone who can reach the server.",
+  // (authentication and connection)
+  connFailed: "Cannot connect to the backupd server: {0}",
+  connFailedShort: "Cannot connect to the server",
+  loginRequired: "Login required: the session has expired or the token was rejected",
+  loggedOut: "You have logged out",
+  authOk: "🔒 authenticated", authNeeded: "🔒 login required",
+  openAccess: "open access (no password set)",
+  loginSub: "Interface access with a password",
+  loginPassPh: "Password", loginBtn: "Log in",
+  // (statuses, time, buttons, progress)
+  stRunning: "running…", stOk: "ok", stError: "error",
+  stStopped: "stopped", stNever: "never ran",
+  metaDuration: "duration ", metaCopied: "copied ",
+  btnRun: "Run now",
+  btnContinue: "Continue after a break: list comparison (source − copied), missing files are copied without mirror, the truncated file is re-copied in full (other job options unchanged)",
+  btnDryRun: "Test run (dry-run)", btnStop: "Stop",
+  btnLog: "Log", btnEdit: "Edit", btnDel: "Delete",
+  scanPending: " (total is being determined…)", scanUnknown: " (total unknown)",
+  filesWord: " files", remain: "remaining ",
+  delJobConfirm: "Delete job \"{0}\"?\nFiles at the destination will not be deleted.",
+  editJob: "Edit job", newJob: "New job",
+  modeIncr: "incr.", modeFull: "full", modeMirror: "mirror",
+  schedManual: "manually", schedEvery: "every {0} min",
+  schedDaily: "daily at {0}", schedWeekly: "every {0} at {1}",
+  wd: "Mon;Tue;Wed;Thu;Fri;Sat;Sun",
+  unitS: "s", unitMin: "min", unitH: "h", unitD: "d",
+  unitGB: "GB", unitMB: "MB", unitKB: "KB",
+  // (job form: source)
+  fName: "Job name", fNamePh: "For example: Server data",
+  fSrcType: "Source type",
+  srcLocalOpt: "Linux — local directory",
+  srcSmbOpt: "Windows — shared folder (SMB / CIFS)",
+  srcSshOpt: "Windows — SSH (DeltaRSync)",
+  srcRsyncdOpt: "Linux — rsync daemon (rsyncd, no SSH)",
+  srcFtpOpt: "FTP server (lftp client)",
+  srcLocalDir: "Source directory (Linux)",
+  srcSmbLegend: "Windows shared folder (SMB) — source",
+  shareAddrSub: "Share address (may include a subfolder)",
+  smbVers: "SMB version (opt.)", user: "User", password: "Password",
+  srcSmbHint: "The share will be mounted on the server (cifs), then copied with rsync.",
+  srcSshLegend: "Windows over SSH — source (OpenSSH Server + DeltaRSync)",
+  host: "Host (IP or name)", port: "Port", winDir: "Directory on Windows",
+  srcSshHint: "rsync will pull files from Windows over SSH: a key is needed (<span class=\"mono\">ssh-copy-id user@windows</span>). Cannot be used together with an SSH destination (rsync supports only one remote end).",
+  srcRsyncdLegend: "rsync daemon (rsyncd) — source, no SSH",
+  module: "Module", moduleSub: "Subpath in module (opt.)",
+  userOpt: "User (opt.)", passOpt: "Password (opt.)",
+  srcRsyncdHint: "The module must be defined in <span class=\"mono\">/etc/rsyncd.conf</span> on the remote machine (port 873 open in firewalld). The protocol does not encrypt data — use in a trusted network.",
+  srcFtpLegend: "FTP server — source (copying via lftp mirror)",
+  ftpDir: "Directory on the FTP server",
+  ftpDirTitle: "Empty — FTP server root (/)",
+  srcFtpHint: "An FTP server runs on the source. Copying is done by lftp (mirror command) — always a single up-to-date copy, no snapshots. The protocol does not encrypt data — use in a trusted network.",
+  // (job form: destination, mode, retention, schedule)
+  fDstType: "Destination type",
+  dstSshOpt: "Windows — SSH + rsync (DeltaRSync)",
+  dstLocalOpt: "Local directory (testing)",
+  dstSmbLegend: "Windows shared folder (SMB)", shareAddr: "Share address",
+  dstSmbHint: "cifs-utils must be installed on Linux; the service runs as root (or with mount rights).",
+  dstSshLegend: "Windows over SSH (requires OpenSSH Server and DeltaRSync on Windows)",
+  dstSshHint: "SSH on Linux needs a key: <span class=\"mono\">ssh-keygen -t ed25519</span>, then <span class=\"mono\">ssh-copy-id user@windows</span> (or add the public key to %USERPROFILE%\\.ssh\\authorized_keys).",
+  dstRsyncdLegend: "rsync daemon (rsyncd) — destination, no SSH",
+  dstRsyncdHint: "The module in <span class=\"mono\">/etc/rsyncd.conf</span> must allow writing (<span class=\"mono\">read only = no</span>). For an rsyncd destination, snapshots are always full copies (hard links are not available on the remote machine). The protocol does not encrypt data.",
+  dstFtpLegend: "FTP server — destination (copying via lftp mirror)",
+  dstFtpHint: "Copying is done by lftp (mirror command) — always a single up-to-date copy, no snapshots. The protocol does not encrypt data — use in a trusted network.",
+  dstLocalDir: "Destination directory",
+  fMode: "Copy mode",
+  modeIncrOpt: "Incremental (snapshots, hard links)",
+  modeFullOpt: "Full (snapshots without links)",
+  modeMirrorOpt: "Mirror (single copy)",
+  fullEvery: "Full copy every, days",
+  fullEveryHint: "For incremental mode: every N days the snapshot is made in full (no link to the previous one).",
+  retLegend: "Snapshot retention (older ones are deleted)",
+  retS: "Last snapshots (all)",
+  retD: "Last days (1 per day)",
+  retW: "Last weeks (1 per week)",
+  retM: "Last months (1 per month)",
+  fSched: "Schedule",
+  schedManualOpt: "Manual (by button)",
+  schedIntervalOpt: "Every N minutes",
+  schedDailyOpt: "Daily",
+  schedWeeklyOpt: "Weekly",
+  intervalMin: "Interval, minutes", time: "Time",
+  weekday: "Weekday",
+  wd0: "Monday", wd1: "Tuesday", wd2: "Wednesday", wd3: "Thursday",
+  wd4: "Friday", wd5: "Saturday", wd6: "Sunday",
+  excludes: "Exclusions (one per line)",
+  // (job form: advanced options, lftp)
+  advLegend: "Advanced options",
+  compress: "Compression in transit",
+  checksum: "Checksum verification (slower)",
+  delExtra: "Delete extra files (only \"Mirror\" mode)",
+  bwlimit: "Speed limit, KB/s (0 = unlimited)",
+  jobEnabled: "Job enabled",
+  lftpLegend: "lftp settings (FTP copying)",
+  lftpParallel: "Parallel streams (files)",
+  lftpParallelHint: "How many files lftp copies at once (mirror --parallel).",
+  lftpPget: "Streams per file (pget)",
+  lftpPgetHint: "1 = off; >1 — each file is copied over several connections (mirror --use-pget-n).",
+  lftpBuffer: "Transfer buffer, KiB",
+  lftpBufferHint: "xfer:buffer-size. 1024 (1 MB) measured faster on small files; 0 = lftp default (64 KB).",
+  lftpOnlyNewer: "Newer files only (mirror --only-newer)",
+  lftpContinue: "Continue incomplete runs (list comparison, no mirror)",
+  lftpPassive: "Passive FTP mode (ftp:passive-mode)",
+  lftpRateHint: "The lftp speed limit is set by the \"Speed limit, KB/s\" field above.",
+  cancel: "Cancel",
+  }
+};
+/* Перевод строки по ключу; {0}, {1} — подстановки.
+   Статический HTML помечен атрибутами data-i18n / data-i18n-html /
+   data-i18n-ph / data-i18n-title; динамические строки — через t(). */
+function t(key, ...args) {
+  const L = I18N[LANG] || I18N.ru;
+  let s = (key in L) ? L[key] : I18N.ru[key];
+  if (s == null) s = key;
+  for (let i = 0; i < args.length; i++)
+    s = s.split("{" + i + "}").join(String(args[i]));
+  return s;
+}
+/* Применить язык: статика + перерисовка динамических частей */
+function applyI18n() {
+  document.documentElement.lang = LANG;
+  document.title = t("title");
+  for (const el of document.querySelectorAll("[data-i18n]"))
+    el.textContent = t(el.getAttribute("data-i18n"));
+  for (const el of document.querySelectorAll("[data-i18n-html]"))
+    el.innerHTML = t(el.getAttribute("data-i18n-html"));
+  for (const el of document.querySelectorAll("[data-i18n-ph]"))
+    el.setAttribute("placeholder", t(el.getAttribute("data-i18n-ph")));
+  for (const el of document.querySelectorAll("[data-i18n-title]"))
+    el.setAttribute("title", t(el.getAttribute("data-i18n-title")));
+  renderJobs();
+  if (currentTab === "system") refreshSystem();
+  refreshAuth();
+}
+function applyLang(lang) {
+  LANG = lang;
+  const sel = document.getElementById("langSelect");
+  if (sel) sel.value = lang;
+  applyI18n();
+}
+async function setLang(lang) {
+  if (!I18N[lang] || lang === LANG) return;
+  try { await api("/api/lang", "POST", { lang }); }
+  catch (e) { alert(t("errPrefix") + e.message); return; }
+  applyLang(lang);
+}
+
+
+
+
+
 async function api(path, method = "GET", body) {
   const headers = {};
   if (token) headers["Authorization"] = "Bearer " + token;
@@ -732,13 +1112,13 @@ async function api(path, method = "GET", body) {
   try {
     r = await fetch(path, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined });
   } catch (e) {
-    alert("Не удалось подключиться к серверу backupd: " + e);
+    alert(t("connFailed", e));
     throw e;
   }
   if (r.status === 401) {
     token = ""; localStorage.removeItem("backupd_token");
     if (document.getElementById("loginScreen").classList.contains("hidden"))
-      showLogin("Требуется вход: сессия истекла или токен отклонён");
+      showLogin(t("loginRequired"));
     throw new Error("401");
   }
   const data = await r.json().catch(() => ({}));
@@ -776,27 +1156,28 @@ async function doLogin() {
     hideLogin();
     refreshStatus(); refreshJobs();
   } catch (e) {
-    showLogin(e.message === "401" ? "Не удалось подключиться к серверу" : e.message);
+    showLogin(e.message === "401" ? t("connFailedShort") : e.message);
   }
 }
 async function doLogout() {
   try { await api("/api/logout", "POST", {}); } catch (e) {}
   token = ""; localStorage.removeItem("backupd_token");
-  showLogin("Вы вышли из интерфейса");
+  showLogin(t("loggedOut"));
 }
 async function refreshAuth() {
   try {
     const headers = {};
     if (token) headers["Authorization"] = "Bearer " + token;
     const d = await fetch("/api/auth", { headers }).then(r => r.json().catch(() => ({})));
+    if (d.lang && d.lang !== LANG) { applyLang(d.lang); return; }
     const badge = document.getElementById("authBadge");
     if (d.auth) {
-      badge.textContent = d.logged_in ? "🔒 авторизован" : "🔒 требуется вход";
+      badge.textContent = d.logged_in ? t("authOk") : t("authNeeded");
       badge.className = "badge" + (d.logged_in ? " ok" : "");
       if (!d.logged_in && document.getElementById("loginScreen").classList.contains("hidden"))
         showLogin();
     } else {
-      badge.textContent = "открытый доступ (пароль не задан)";
+      badge.textContent = t("openAccess");
       badge.className = "badge";
       hideLogin();
     }
@@ -810,8 +1191,9 @@ function esc(s) {
 }
 function fmtTs(epoch) {
   if (!epoch) return "—";
+  const loc = LANG === "en" ? "en-GB" : "ru-RU";
   const d = new Date(epoch * 1000);
-  return d.toLocaleDateString("ru-RU") + " " + d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleDateString(loc) + " " + d.toLocaleTimeString(loc, { hour: "2-digit", minute: "2-digit" });
 }
 /* короткая форма для табличных ячеек: «13.11 14:35» (год — только
    если не текущий); полная форма остаётся в подсказке */
@@ -825,39 +1207,41 @@ function fmtTsShort(epoch) {
 }
 function fmtDur(s) {
   if (s == null) return "—";
-  if (s < 60) return s + " с";
-  return Math.floor(s / 60) + " мин " + Math.round(s % 60) + " с";
+  if (s < 60) return s + " " + t("unitS");
+  return Math.floor(s / 60) + " " + t("unitMin") + " " + Math.round(s % 60) + " " + t("unitS");
 }
 function fmtSize(b) {
   if (b == null) return "—";
-  if (b > 1024 * 1024 * 1024) return (b / 1073741824).toFixed(2) + " ГБ";
-  if (b > 1024 * 1024) return (b / 1048576).toFixed(1) + " МБ";
-  return (b / 1024).toFixed(0) + " КБ";
+  if (b > 1024 * 1024 * 1024) return (b / 1073741824).toFixed(2) + " " + t("unitGB");
+  if (b > 1024 * 1024) return (b / 1048576).toFixed(1) + " " + t("unitMB");
+  return (b / 1024).toFixed(0) + " " + t("unitKB");
 }
 /* текущая длительность выполняющегося прогона: с точностью до
    секунд пока идёт, в часах — минутами (обновляется опросом 2 с) */
 function fmtElapsed(s) {
   if (s < 0) s = 0;
   const sec = Math.floor(s);
-  if (sec < 60) return sec + " с";
-  if (sec < 3600) return Math.floor(sec / 60) + " мин " + (sec % 60) + " с";
-  return Math.floor(sec / 3600) + " ч " + Math.floor(sec % 3600 / 60) + " мин";
+  if (sec < 60) return sec + " " + t("unitS");
+  if (sec < 3600) return Math.floor(sec / 60) + " " + t("unitMin") + " " + (sec % 60) + " " + t("unitS");
+  return Math.floor(sec / 3600) + " " + t("unitH") + " " + Math.floor(sec % 3600 / 60) + " " + t("unitMin");
 }
 function fmtUptime(s) {
   const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
-  if (d) return d + " д " + h + " ч " + m + " мин";
-  if (h) return h + " ч " + m + " мин";
-  return m + " мин";
+  if (d) return d + " " + t("unitD") + " " + h + " " + t("unitH") + " " + m + " " + t("unitMin");
+  if (h) return h + " " + t("unitH") + " " + m + " " + t("unitMin");
+  return m + " " + t("unitMin");
 }
-const MODES = { incremental: "инкремент.", full: "полное", mirror: "зеркало" };
+function modeLabel(m) {
+  return { incremental: t("modeIncr"), full: t("modeFull"), mirror: t("modeMirror") }[m] || m;
+}
 const SCHED = (s) => {
   if (!s) return "—";
-  if (s.kind === "manual") return "вручную";
-  if (s.kind === "interval") return "каждые " + (s.minutes || 60) + " мин";
-  if (s.kind === "daily") return "ежедневно " + s.time;
+  if (s.kind === "manual") return t("schedManual");
+  if (s.kind === "interval") return t("schedEvery", s.minutes || 60);
+  if (s.kind === "daily") return t("schedDaily", s.time);
   if (s.kind === "weekly") {
-    const wd = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
-    return "каждый " + (wd[s.weekday] || "") + " " + s.time;
+    const wd = t("wd").split(";");
+    return t("schedWeekly", wd[s.weekday] || "", s.time);
   }
   return "—";
 };
@@ -899,7 +1283,12 @@ function switchTab(t) {
   for (const b of ["tabJobs","tabLog","tabSystem"]) document.getElementById(b).classList.remove("active");
   document.getElementById("tab" + cap).classList.add("active");
   if (t === "jobs") refreshJobs();
-  if (t === "log") { refreshLogJobs(); refreshLog(true); }
+  if (t === "log") {
+    refreshLogJobs();
+    if (!document.getElementById("logJob").value)
+      document.getElementById("logView").textContent = t("logSelectJob");
+    refreshLog(true);
+  }
   if (t === "system") refreshSystem();
 }
 
@@ -909,7 +1298,7 @@ async function refreshStatus() {
     const s = await api("/api/status");
     const b = document.getElementById("rsyncBadge");
     if (s.rsync) { b.textContent = s.rsync.split(/\s+/).slice(0, 3).join(" "); b.className = "badge ok"; }
-    else { b.textContent = "rsync не найден!"; b.className = "badge err"; }
+    else { b.textContent = t("rsyncNotFound"); b.className = "badge err"; }
     // бейдж авторизации обновляет refreshAuth()
   } catch (e) {}
 }
@@ -933,12 +1322,12 @@ function renderJobs() {
     if (st.running) {
       const el = st.started_at
         ? " " + fmtElapsed(Date.now() / 1000 - st.started_at) : "";
-      badge = '<span class="pill running"><span class="spin">◌</span> выполняется…' + el + "</span>";
+      badge = '<span class="pill running"><span class="spin">◌</span> ' + t("stRunning") + el + "</span>";
     }
-    else if (st.last_status === "ok") { badge = '<span class="pill ok">успешно</span>'; }
-    else if (st.last_status === "error") { badge = '<span class="pill error">ошибка</span>'; errTitle = ' title="' + esc(st.last_error || "") + '"'; }
-    else if (st.last_status === "stopped") { badge = '<span class="pill stopped">остановлено</span>'; }
-    else badge = '<span class="pill idle">не запускалось</span>';
+    else if (st.last_status === "ok") { badge = '<span class="pill ok">' + t("stOk") + "</span>"; }
+    else if (st.last_status === "error") { badge = '<span class="pill error">' + t("stError") + "</span>"; errTitle = ' title="' + esc(st.last_error || "") + '"'; }
+    else if (st.last_status === "stopped") { badge = '<span class="pill stopped">' + t("stStopped") + "</span>"; }
+    else badge = '<span class="pill idle">' + t("stNever") + "</span>";
     const next = st.running ? "—" : (st.next_run ? fmtTsShort(st.next_run) : "—");
     // Ячейка «Последний запуск»: бейдж + (в простое) короткая
     // мета-строка «13.11 14:35 · 1 ч 12 мин · 16,2 ГБ», полные
@@ -948,8 +1337,8 @@ function renderJobs() {
     if (!st.running) {
       const full = st.last_run
         ? fmtTs(st.last_run)
-          + (st.last_duration != null ? " · длительность " + fmtDur(st.last_duration) : "")
-          + (st.last_size ? " · скопировано " + fmtSize(st.last_size) : "")
+          + (st.last_duration != null ? " · " + t("metaDuration") + fmtDur(st.last_duration) : "")
+          + (st.last_size ? " · " + t("metaCopied") + fmtSize(st.last_size) : "")
         : "";
       const short = st.last_run
         ? fmtTsShort(st.last_run)
@@ -965,23 +1354,23 @@ function renderJobs() {
       "<td><b>" + esc(j.name) + "</b></td>" +
       '<td class="mono path" title="' + esc(srcLabel(j)) + '">' + esc(srcLabel(j)) + "</td>" +
       '<td class="mono path" title="' + esc(destLabel(j)) + '">' + esc(destLabel(j)) + "</td>" +
-      "<td>" + (MODES[j.mode] || j.mode) + "</td>" +
+      "<td>" + modeLabel(j.mode) + "</td>" +
       "<td>" + SCHED(j.schedule) + "</td>" +
       "<td" + errTitle + ">" + badge + metaHtml + "</td>" +
       "<td class='muted'>" + next + "</td>" +
       '<td class="actions">' +
         '<div class="arow">' +
-          '<button class="ibtn" title="Запустить сейчас" ' + (st.running ? "disabled" : "") + ' onclick="runJob(\'' + j.id + '\',false)">▶</button>' +
+          '<button class="ibtn" title="' + t("btnRun") + '" ' + (st.running ? "disabled" : "") + ' onclick="runJob(\'' + j.id + '\',false)">▶</button>' +
           (((j.source && j.source.type === "ftp") || (j.destination && j.destination.type === "ftp"))
-            ? '<button class="ibtn" title="Продолжить после обрыва: сравнение списков (источник − скопировано), недостающие файлы копируются без mirror, обрезанный — заново целиком (остальные опции задания)" ' + (st.running ? "disabled" : "") + ' onclick="runJob(\'' + j.id + '\',false,{continue:true,only_newer:false})">⏩</button>'
+            ? '<button class="ibtn" title="' + t("btnContinue") + '" ' + (st.running ? "disabled" : "") + ' onclick="runJob(\'' + j.id + '\',false,{continue:true,only_newer:false})">⏩</button>'
             : "") +
-          '<button class="ibtn" title="Тестовый прогон (dry-run)" ' + (st.running ? "disabled" : "") + ' onclick="runJob(\'' + j.id + '\',true)">🧪</button>' +
-          '<button class="ibtn" title="Остановить" ' + (st.running ? "" : "disabled") + ' onclick="stopJob(\'' + j.id + '\')">⏹</button>' +
+          '<button class="ibtn" title="' + t("btnDryRun") + '" ' + (st.running ? "disabled" : "") + ' onclick="runJob(\'' + j.id + '\',true)">🧪</button>' +
+          '<button class="ibtn" title="' + t("btnStop") + '" ' + (st.running ? "" : "disabled") + ' onclick="stopJob(\'' + j.id + '\')">⏹</button>' +
         "</div>" +
         '<div class="arow">' +
-          '<button class="ibtn" title="Журнал" onclick="openLog(\'' + j.id + '\')">📄</button>' +
-          '<button class="ibtn" title="Изменить" onclick="openJobForm(\'' + j.id + '\')">✎</button>' +
-          '<button class="ibtn" title="Удалить" onclick="delJob(\'' + j.id + '\')">🗑</button>' +
+          '<button class="ibtn" title="' + t("btnLog") + '" onclick="openLog(\'' + j.id + '\')">📄</button>' +
+          '<button class="ibtn" title="' + t("btnEdit") + '" onclick="openJobForm(\'' + j.id + '\')">✎</button>' +
+          '<button class="ibtn" title="' + t("btnDel") + '" onclick="delJob(\'' + j.id + '\')">🗑</button>' +
         "</div>" +
       "</td></tr>");
     // прогресс FTP-копирования (state.progress — только во время
@@ -993,13 +1382,12 @@ function renderJobs() {
       // параллельно с копированием; pct null без pending — скан
       // не удался, показываем только счётчик
       const note = pct != null ? ""
-        : (pr.total_pending ? " (итог определяется…)"
-           : " (итог не определён)");
+        : (pr.total_pending ? t("scanPending") : t("scanUnknown"));
       // скорость и остаток времени считает сервер (state.progress)
       let extra = "";
       if (pr.speed != null) {
-        extra = " · " + fmtSize(pr.speed) + "/с";
-        if (pr.eta != null) extra += " · осталось " + fmtDur(pr.eta);
+        extra = " · " + fmtSize(pr.speed) + "/" + t("unitS");
+        if (pr.eta != null) extra += " · " + t("remain") + fmtDur(pr.eta);
       }
       const bar = (pct != null
         ? '<div class="pbar"><div class="pfill" style="width:' + pct + '%"></div></div>'
@@ -1007,7 +1395,7 @@ function renderJobs() {
       rows.push('<tr class="progrow"><td colspan="9"><div class="pline">' + bar +
         '<div class="pmeta">' + (pct != null ? pct + "% · " : "")
         + pr.done_files + (pr.total_files ? " / " + pr.total_files : "")
-        + " файлов" + note + extra + "</div></div></td></tr>");
+        + t("filesWord") + note + extra + "</div></div></td></tr>");
     }
   }
   tb.innerHTML = rows.join("");
@@ -1041,7 +1429,7 @@ async function toggleJob(id) {
 }
 async function delJob(id) {
   const j = JOBS.find(x => x.id === id);
-  if (!confirm('Удалить задание «' + (j ? j.name : id) + '»?\nФайлы в месте назначения удалены не будут.')) return;
+  if (!confirm(t("delJobConfirm", j ? j.name : id))) return;
   try { await api("/api/jobs/" + id, "DELETE"); refreshJobs(); } catch (e) { alert(e.message); }
 }
 
@@ -1049,7 +1437,7 @@ async function delJob(id) {
 function openJobForm(id) {
   editingId = id;
   const j = id ? (JOBS.find(x => x.id === id) || {}) : {};
-  document.getElementById("modalTitle").textContent = id ? "Изменить задание" : "Новое задание";
+  document.getElementById("modalTitle").textContent = id ? t("editJob") : t("newJob");
   document.getElementById("f_name").value = j.name || "";
   const s = typeof j.source === "string"
     ? { type: "local", path: j.source } : (j.source || {});
@@ -1275,7 +1663,7 @@ async function refreshLog(force) {
     const d = await api("/api/jobs/" + id + "/log?tail=600");
     const atBottom = view.scrollHeight - view.scrollTop - view.clientHeight < 40;
     if (force || d.log.length !== lastLogLen || atBottom) {
-      view.textContent = d.log || "(журнал пуст)";
+      view.textContent = d.log || t("logEmpty");
       lastLogLen = d.log.length;
       view.scrollTop = view.scrollHeight;
     }
@@ -1294,24 +1682,24 @@ async function refreshSystem() {
   try {
     const s = await api("/api/status");
     document.getElementById("sVer").textContent = s.version;
-    document.getElementById("sRsync").textContent = s.rsync || "НЕ НАЙДЕН";
+    document.getElementById("sRsync").textContent = s.rsync || t("notFound");
     const lf = document.getElementById("sLftp");
-    lf.textContent = s.lftp || "НЕ НАЙДЕН (нужен для FTP-заданий)";
+    lf.textContent = s.lftp || t("lftpNotFound");
     lf.classList.toggle("muted", !!s.lftp);
     document.getElementById("sPy").textContent = s.python;
     document.getElementById("sUp").textContent = fmtUptime(s.uptime);
     document.getElementById("sData").textContent = s.data_dir;
     document.getElementById("sJobs").textContent = s.jobs;
     document.getElementById("sSudo").textContent =
-      s.mount_sudo ? "через sudo (--use-sudo)" : "без sudo (нужны root-права или --use-sudo)";
+      s.mount_sudo ? t("mountViaSudo") : t("mountNoSudo");
     const fm = document.getElementById("sFusermount");
     fm.textContent = s.fusermount
-      ? `${s.fusermount}, резервно — umount`
-      : "НЕ НАЙДЕН (нужен fuse/fuse3, иначе только umount)";
+      ? t("fusermountOk", s.fusermount)
+      : t("fusermountMissing");
     fm.classList.toggle("muted", !!s.fusermount);
     const ts = document.getElementById("tokenState");
-    if (s.auth) { ts.textContent = "пароль задан (авторизация включена)"; ts.className = "pill ok"; }
-    else { ts.textContent = "не задан (открытый доступ)"; ts.className = "pill error"; }
+    if (s.auth) { ts.textContent = t("tokenSet"); ts.className = "pill ok"; }
+    else { ts.textContent = t("tokenNotSet"); ts.className = "pill error"; }
     document.getElementById("tokenOffBtn").style.visibility = s.auth ? "visible" : "hidden";
     document.getElementById("logoutBtn").style.visibility = s.auth ? "visible" : "hidden";
   } catch (e) {}
@@ -1320,12 +1708,12 @@ async function refreshSystem() {
     const tb = document.getElementById("histBody");
     document.getElementById("histEmpty").hidden = h.length > 0;
     tb.innerHTML = h.slice(0, 50).map(x => {
-      const p = x.status === "ok" ? '<span class="pill ok">успешно</span>'
-               : x.status === "stopped" ? '<span class="pill stopped">остановлено</span>'
-               : '<span class="pill error">ошибка</span>';
+      const p = x.status === "ok" ? '<span class="pill ok">' + t("stOk") + "</span>"
+               : x.status === "stopped" ? '<span class="pill stopped">' + t("stStopped") + "</span>"
+               : '<span class="pill error">' + t("stError") + "</span>";
       return "<tr><td>" + fmtTs(x.ts) + "</td><td>" + esc(x.job) + "</td><td>" + p +
         "</td><td>" + fmtDur(x.duration) + "</td><td class='muted'>" +
-        (x.dry ? "тестовый прогон" : "") + (x.error ? " — " + esc(x.error) : "") + "</td></tr>";
+        (x.dry ? t("testRun") : "") + (x.error ? " — " + esc(x.error) : "") + "</td></tr>";
     }).join("");
   } catch (e) {}
   loadNotify();
@@ -1344,7 +1732,7 @@ async function loadNotify() {
     document.getElementById("n_url").value = n.url || "https://ntfy.sh";
     document.getElementById("n_topic").value = n.topic || "";
     document.getElementById("n_enabled").checked = !!n.enabled;
-    setNotifyState(n.enabled ? "включены" : "выключены",
+    setNotifyState(n.enabled ? t("notifyOn") : t("notifyOff"),
                    n.enabled ? "ok" : "idle");
   } catch (e) {}
 }
@@ -1360,40 +1748,39 @@ async function saveNotify() {
     const d = await api("/api/notify", "POST", notifyForm());
     document.getElementById("n_topic").value = (d.notify || {}).topic || "";
     const en = (d.notify || {}).enabled;
-    setNotifyState(en ? "включены (сохранено)" : "выключены (сохранено)",
+    setNotifyState(en ? t("notifyOnSaved") : t("notifyOffSaved"),
                    en ? "ok" : "idle");
   } catch (e) {
-    setNotifyState("ошибка: " + e.message, "error");
+    setNotifyState(t("errPrefix") + e.message, "error");
   }
 }
 async function testNotify() {
-  setNotifyState("отправляю тест…", "running");
+  setNotifyState(t("testSending"), "running");
   try {
     const sv = await api("/api/notify", "POST", notifyForm());
     const en = (sv.notify || {}).enabled;
     const d = await api("/api/notify/test", "POST", {});
-    setNotifyState(d.ok ? "тест отправлен ✓" : "ошибка: " + (d.error || ""),
+    setNotifyState(d.ok ? t("testSent") : t("errPrefix") + (d.error || ""),
                    d.ok ? "ok" : "error");
-    if (!en) setNotifyState("тест отправлен, уведомления выключены", "stopped");
+    if (!en) setNotifyState(t("testSentOff"), "stopped");
   } catch (e) {
-    setNotifyState("ошибка: " + e.message, "error");
+    setNotifyState(t("errPrefix") + e.message, "error");
   }
 }
 async function setPassword() {
-  const pw = prompt("Введите новый пароль (минимум 4 символа):");
+  const pw = prompt(t("pwPrompt"));
   if (pw == null) return;
-  if (pw.length < 4) { alert("Пароль должен быть не короче 4 символов"); return; }
-  const pw2 = prompt("Повторите пароль:");
-  if (pw !== pw2) { alert("Пароли не совпадают"); return; }
+  if (pw.length < 4) { alert(t("pwShort")); return; }
+  const pw2 = prompt(t("pwRepeat"));
+  if (pw !== pw2) { alert(t("pwMismatch")); return; }
   try {
     await api("/api/password", "POST", { password: pw });
-    alert("Пароль установлен. Теперь для входа в интерфейс он потребуется.");
+    alert(t("pwSet"));
     refreshAuth(); refreshSystem(); refreshStatus();
   } catch (e) { alert(e.message); }
 }
 async function clearPassword() {
-  if (!confirm("Отключить авторизацию? Интерфейс будет доступен без пароля " +
-               "всем, кто может подключиться к серверу.")) return;
+  if (!confirm(t("clearAuthConfirm"))) return;
   try {
     await api("/api/password/clear", "POST", {});
     token = ""; localStorage.removeItem("backupd_token");

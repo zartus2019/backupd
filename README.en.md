@@ -62,6 +62,8 @@ Limitations:
 - **Push notifications (ntfy)** about the start and finish of each job —
   on Android, Linux or Windows (public ntfy.sh or your own server in the
   local network).
+- **Bilingual interface**: Russian and English (System tab → Interface
+  language; the choice is stored in `config.json`).
 
 ## Installation on Linux (source server)
 
