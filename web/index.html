@@ -287,6 +287,7 @@ footer { text-align:center; color:#94a3b8; font-size:12px; padding:8px 0 26px; }
           <option value="local" data-i18n="srcLocalOpt">Linux — локальный каталог</option>
           <option value="smb" data-i18n="srcSmbOpt">Windows — общая папка (SMB / CIFS)</option>
           <option value="ssh" data-i18n="srcSshOpt">Windows — SSH (DeltaRSync)</option>
+          <option value="vss" data-i18n="srcVssOpt">Windows — теневой снимок (VSS через SSH)</option>
           <option value="rsyncd" data-i18n="srcRsyncdOpt">Linux — rsync-демон (rsyncd, без SSH)</option>
           <option value="ftp" data-i18n="srcFtpOpt">FTP-сервер (клиент lftp)</option>
         </select>
@@ -351,10 +352,48 @@ footer { text-align:center; color:#94a3b8; font-size:12px; padding:8px 0 26px; }
             <label data-i18n="winDir">Каталог на Windows</label>
             <input type="text" id="f_src_ssh_path" class="mono" placeholder="D:\Data">
           </div>
+          <div style="margin-top:10px">
+            <label data-i18n="srcRsyncPath">Путь к rsync.exe на Windows (опц.)</label>
+            <input type="text" id="f_src_ssh_rsync_path" class="mono" placeholder="C:\rsync\bin\rsync.exe">
+          </div>
+          <div class="hint" data-i18n-html="srcRsyncPathHint">Обычно пусто (rsync ищется в PATH). Укажите полный путь (например <span class="mono">C:\rsync\bin\rsync.exe</span>), если в System32 лежит чужой <span class="mono">rsync.cmd</span> или rsync установлен не в PATH.
+          </div>
           <div class="hint" data-i18n-html="srcSshHint">rsync подтянет файлы с Windows по SSH: нужен ключ
           (<span class="mono">ssh-copy-id user@windows</span>).
           Одновременно с SSH-целью использовать нельзя (rsync поддерживает
           только один удалённый конец).</div>
+        </fieldset>
+      </div>
+
+      <!-- источник: VSS (теневой снимок Windows через SSH) -->
+      <div class="full hidden" id="src_vss">
+        <fieldset>
+          <legend data-i18n="srcVssLegend">Теневой снимок Windows (VSS) — источник, по SSH</legend>
+          <div class="row">
+            <div style="flex:2">
+              <label data-i18n="host">Хост (IP или имя)</label>
+              <input type="text" id="f_src_vss_host" class="mono">
+            </div>
+            <div>
+              <label data-i18n="port">Порт</label>
+              <input type="number" id="f_src_vss_port" value="22">
+            </div>
+            <div>
+              <label data-i18n="user">Пользователь</label>
+              <input type="text" id="f_src_vss_user" placeholder="локальный администратор">
+            </div>
+          </div>
+          <div style="margin-top:10px">
+            <label data-i18n="winDir">Каталог на Windows</label>
+            <input type="text" id="f_src_vss_path" class="mono" placeholder="D:\Data">
+          </div>
+          <div style="margin-top:10px">
+            <label data-i18n="srcRsyncPath">Путь к rsync.exe на Windows (опц.)</label>
+            <input type="text" id="f_src_vss_rsync_path" class="mono" placeholder="C:\rsync\bin\rsync.exe">
+          </div>
+          <div class="hint" data-i18n-html="srcRsyncPathHint">Обычно пусто (rsync ищется в PATH). Укажите полный путь (например <span class="mono">C:\rsync\bin\rsync.exe</span>), если в System32 лежит чужой <span class="mono">rsync.cmd</span> или rsync установлен не в PATH.
+          </div>
+          <div class="hint" data-i18n-html="srcVssHint">На Windows по SSH создаётся теневой снимок тома (vssadmin), и rsync копирует файлы из точки монтирования снимка — включая открытые на запись. Нужен SSH-ключ, пользователь — локальный администратор Windows. Цель — только локальный каталог сервера бэкапа или SMB-шара.</div>
         </fieldset>
       </div>
 
@@ -492,6 +531,12 @@ footer { text-align:center; color:#94a3b8; font-size:12px; padding:8px 0 26px; }
           <div style="margin-top:10px">
             <label data-i18n="winDir">Каталог на Windows</label>
             <input type="text" id="f_ssh_path" class="mono" placeholder="C:\Backup">
+          </div>
+          <div style="margin-top:10px">
+            <label data-i18n="srcRsyncPath">Путь к rsync.exe на Windows (опц.)</label>
+            <input type="text" id="f_ssh_rsync_path" class="mono" placeholder="C:\rsync\bin\rsync.exe">
+          </div>
+          <div class="hint" data-i18n-html="srcRsyncPathHint">Обычно пусто (rsync ищется в PATH). Укажите полный путь (например <span class="mono">C:\rsync\bin\rsync.exe</span>), если в System32 лежит чужой <span class="mono">rsync.cmd</span> или rsync установлен не в PATH.
           </div>
           <div class="hint" data-i18n-html="dstSshHint">Для SSH на Linux нужен ключ: <span class="mono">ssh-keygen -t ed25519</span>,
           затем <span class="mono">ssh-copy-id user@windows</span> (или добавить публичный ключ в %USERPROFILE%\.ssh\authorized_keys).</div>
@@ -839,6 +884,11 @@ ru: {
   srcSshLegend: "Windows через SSH — источник (OpenSSH Server + DeltaRSync)",
   host: "Хост (IP или имя)", port: "Порт", winDir: "Каталог на Windows",
   srcSshHint: "rsync подтянет файлы с Windows по SSH: нужен ключ (<span class=\"mono\">ssh-copy-id user@windows</span>). Одновременно с SSH-целью использовать нельзя (rsync поддерживает только один удалённый конец).",
+  srcRsyncPath: "Путь к rsync.exe на Windows (опц.)",
+  srcRsyncPathHint: "Обычно пусто (rsync ищется в PATH). Укажите полный путь (например <span class=\"mono\">C:\\rsync\\bin\\rsync.exe</span>), если в System32 лежит чужой <span class=\"mono\">rsync.cmd</span> или rsync установлен не в PATH.",
+  srcVssOpt: "Windows — теневой снимок (VSS через SSH)",
+  srcVssLegend: "Теневой снимок Windows (VSS) — источник, по SSH",
+  srcVssHint: "На Windows по SSH создаётся теневой снимок тома (vssadmin), и rsync копирует файлы из точки монтирования снимка — включая открытые на запись. Нужен SSH-ключ, пользователь — локальный администратор Windows. Цель — только локальный каталог сервера бэкапа или SMB-шара.",
   srcRsyncdLegend: "rsync-демон (rsyncd) — источник, без SSH",
   module: "Модуль", moduleSub: "Подпуть в модуле (опц.)",
   userOpt: "Пользователь (опц.)", passOpt: "Пароль (опц.)",
@@ -1003,6 +1053,11 @@ en: {
   srcSshLegend: "Windows over SSH — source (OpenSSH Server + DeltaRSync)",
   host: "Host (IP or name)", port: "Port", winDir: "Directory on Windows",
   srcSshHint: "rsync will pull files from Windows over SSH: a key is needed (<span class=\"mono\">ssh-copy-id user@windows</span>). Cannot be used together with an SSH destination (rsync supports only one remote end).",
+  srcRsyncPath: "Path to rsync.exe on Windows (opt.)",
+  srcRsyncPathHint: "Usually empty (rsync is looked up in PATH). Give the full path (e.g. <span class=\"mono\">C:\\rsync\\bin\\rsync.exe</span>) if System32 has a stray <span class=\"mono\">rsync.cmd</span> or rsync is not on PATH.",
+  srcVssOpt: "Windows — shadow copy (VSS over SSH)",
+  srcVssLegend: "Windows shadow copy (VSS) — source, over SSH",
+  srcVssHint: "A shadow copy of the volume is created on Windows over SSH (vssadmin), and rsync copies files from the snapshot mount point — including files open for writing. An SSH key is needed; the user must be a local Windows administrator. The destination must be a local directory of the backup server or an SMB share.",
   srcRsyncdLegend: "rsync daemon (rsyncd) — source, no SSH",
   module: "Module", moduleSub: "Subpath in module (opt.)",
   userOpt: "User (opt.)", passOpt: "Password (opt.)",
@@ -1479,6 +1534,12 @@ function openJobForm(id) {
   document.getElementById("f_src_ssh_port").value = s.port || 22;
   document.getElementById("f_src_ssh_user").value = s.user || "";
   document.getElementById("f_src_ssh_path").value = s.path && s.type === "ssh" ? s.path : "";
+  document.getElementById("f_src_ssh_rsync_path").value = s.rsync_path || "";
+  document.getElementById("f_src_vss_host").value = s.host || "";
+  document.getElementById("f_src_vss_port").value = s.port || 22;
+  document.getElementById("f_src_vss_user").value = s.user || "";
+  document.getElementById("f_src_vss_path").value = s.path && s.type === "vss" ? s.path : "";
+  document.getElementById("f_src_vss_rsync_path").value = s.rsync_path || "";
   document.getElementById("f_src_rsyncd_host").value = s.type === "rsyncd" ? (s.host || "") : "";
   document.getElementById("f_src_rsyncd_port").value = s.type === "rsyncd" ? (s.port || 873) : 873;
   document.getElementById("f_src_rsyncd_module").value = s.type === "rsyncd" ? (s.module || "") : "";
@@ -1500,6 +1561,7 @@ function openJobForm(id) {
   document.getElementById("f_ssh_port").value = d.port || 22;
   document.getElementById("f_ssh_user").value = d.user || "";
   document.getElementById("f_ssh_path").value = d.path || "";
+  document.getElementById("f_ssh_rsync_path").value = d.rsync_path || "";
   document.getElementById("f_rsyncd_host").value = d.type === "rsyncd" ? (d.host || "") : "";
   document.getElementById("f_rsyncd_port").value = d.type === "rsyncd" ? (d.port || 873) : 873;
   document.getElementById("f_rsyncd_module").value = d.type === "rsyncd" ? (d.module || "") : "";
@@ -1548,6 +1610,7 @@ function stypeChanged() {
   document.getElementById("src_local").classList.toggle("hidden", t !== "local");
   document.getElementById("src_smb").classList.toggle("hidden", t !== "smb");
   document.getElementById("src_ssh").classList.toggle("hidden", t !== "ssh");
+  document.getElementById("src_vss").classList.toggle("hidden", t !== "vss");
   document.getElementById("src_rsyncd").classList.toggle("hidden", t !== "rsyncd");
   document.getElementById("src_ftp").classList.toggle("hidden", t !== "ftp");
   updateFtpMode();
@@ -1595,10 +1658,12 @@ async function saveJob() {
       path: st === "local" ? document.getElementById("f_src_local").value
            : st === "smb" ? document.getElementById("f_src_smb_path").value
            : st === "ssh" ? document.getElementById("f_src_ssh_path").value
+           : st === "vss" ? document.getElementById("f_src_vss_path").value
            : st === "ftp" ? document.getElementById("f_src_ftp_path").value
            : document.getElementById("f_src_rsyncd_path").value,
       user: st === "smb" ? document.getElementById("f_src_smb_user").value
            : st === "ssh" ? document.getElementById("f_src_ssh_user").value
+           : st === "vss" ? document.getElementById("f_src_vss_user").value
            : st === "rsyncd" ? document.getElementById("f_src_rsyncd_user").value
            : st === "ftp" ? document.getElementById("f_src_ftp_user").value : "",
       password: st === "smb" ? document.getElementById("f_src_smb_pass").value
@@ -1606,12 +1671,17 @@ async function saveJob() {
                : st === "ftp" ? document.getElementById("f_src_ftp_pass").value : "",
       vers: document.getElementById("f_src_smb_vers").value,
       host: st === "ssh" ? document.getElementById("f_src_ssh_host").value
+           : st === "vss" ? document.getElementById("f_src_vss_host").value
            : st === "rsyncd" ? document.getElementById("f_src_rsyncd_host").value
            : st === "ftp" ? document.getElementById("f_src_ftp_host").value : "",
       port: st === "ssh" ? document.getElementById("f_src_ssh_port").value
+           : st === "vss" ? document.getElementById("f_src_vss_port").value
            : st === "rsyncd" ? document.getElementById("f_src_rsyncd_port").value
            : st === "ftp" ? document.getElementById("f_src_ftp_port").value : "",
       module: st === "rsyncd" ? document.getElementById("f_src_rsyncd_module").value : "",
+      rsync_path: st === "ssh" ? document.getElementById("f_src_ssh_rsync_path").value
+               : st === "vss" ? document.getElementById("f_src_vss_rsync_path").value
+               : "",
     },
     destination: {
       type: t,
@@ -1635,6 +1705,7 @@ async function saveJob() {
            : t === "rsyncd" ? document.getElementById("f_rsyncd_port").value
            : t === "ftp" ? document.getElementById("f_dst_ftp_port").value : "",
       module: t === "rsyncd" ? document.getElementById("f_rsyncd_module").value : "",
+      rsync_path: t === "ssh" ? document.getElementById("f_ssh_rsync_path").value : "",
     },
     mode: document.getElementById("f_mode").value,
     full_every_days: parseInt(document.getElementById("f_fullevery").value || "7"),

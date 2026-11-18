@@ -25,6 +25,7 @@ Any combination of ends is possible (each — Linux or Windows):
 | **Linux** | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **Windows (SMB)** | ✅ | ✅ | ✅ | ✅ | ❌ |
 | **Windows (SSH)** | ✅ | ✅ | ❌ | ✅ | ❌ |
+| **Windows (VSS)** | ✅ | ✅ | ❌ | ❌ | ❌ |
 | **rsyncd** | ✅ | ✅ | ✅ | ✅ | ❌ |
 | **FTP (lftp)** | ✅ | ❌ | ❌ | ❌ | ✅ |
 
@@ -39,6 +40,13 @@ Limitations:
 - **FTP (lftp)** copies only between a local directory and an FTP server
   (SMB, SSH and rsyncd are not supported). No snapshots are made — there
   is always one current copy (mode "Mirror").
+- **Windows (VSS)**: the source is a shadow copy of a Windows volume:
+  `vssadmin create shadow` is run over SSH, and rsync copies files from
+  the snapshot's mount point — this also copies files that are open for
+  writing, correctly. The SSH user must be a local Windows
+  administrator (VSS requires admin rights); an SSH key is required.
+  The destination may only be a local directory of the server or an SMB
+  share. The shadow copy is deleted automatically after the run.
 
 ## Features
 
@@ -48,9 +56,15 @@ Limitations:
   - *Full* — every snapshot is an independent copy;
   - *Mirror* — one current copy (optionally with pruning of extra files).
 - **Sources and destinations**: Windows SMB share (recommended),
-  SSH + rsync (DeltaRSync), rsync daemon (rsyncd, rsync:// protocol, port
-  873), FTP server (lftp client, one current copy), local Linux directory
+  SSH + rsync (DeltaRSync), Windows shadow copy (VSS over SSH — correct
+  copy of files open for writing), rsync daemon (rsyncd, rsync://
+  protocol, port 873), FTP server (lftp client, one current copy), local
+  Linux directory
   (testing) — for both ends.
+- **SSH end**: key-based authentication only (no password prompt);
+  optionally — the full path to the remote rsync (the "Path to rsync.exe
+  on Windows" field, passed as `--rsync-path`, e.g. when a stray
+  `rsync.cmd` sits in System32).
 - **Scheduling**: manual, every N minutes, daily at HH:MM, weekly.
 - **Retention**: last N snapshots + 1 per day/week/month over N periods
   (old snapshots are removed automatically).
@@ -229,6 +243,28 @@ rsync --version -e ssh backupuser@192.168.1.50:  # connection test
 
 5. In backupd: *Destination type* → "Windows — SSH + rsync", host, user,
    directory `C:\Backup`.
+
+### Option 3. Windows (VSS) — source
+
+Copying **from** Windows, where files open for writing are also copied
+correctly (their state at the snapshot moment). Requirements — as in
+Option 2 (OpenSSH Server + rsync in PATH + key), plus:
+
+1. The SSH user must be a **local Windows administrator** (creating
+   shadow copies requires admin rights).
+2. The Volume Shadow Copy (VSS) service is enabled (it is on standard
+   Windows editions; check: `vssadmin list writers` in cmd as
+   administrator).
+
+In backupd: *Source type* → "Windows — shadow copy (VSS over SSH)",
+host, user, a directory like `D:\Data` (the drive letter is the volume
+that will be snapshotted). The destination is a local directory of the
+server or an SMB share. The shadow copy is created before the run and
+deleted automatically afterwards (in any outcome).
+
+If a stray `rsync.cmd` sits in System32 while rsync itself is installed
+elsewhere, give the full path to `rsync.exe` in the "Path to rsync.exe
+on Windows" field (passed to rsync as `--rsync-path`).
 
 ## Option: rsync daemon (rsyncd)
 

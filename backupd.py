@@ -342,19 +342,182 @@ def win_quote(p):
     return '"' + p.replace('"', '\\"') + '"'
 
 
-def ssh_argv(end):
-    return ["ssh", f"-p {int(end.get('port') or 22)}",
-            "-o", "BatchMode=yes",
-            "-o", "StrictHostKeyChecking=accept-new",
-            "-o", "ConnectTimeout=15",
-            f"{end['user']}@{end['host']}"]
+def ssh_argv(end, host=True):
+    """Аргументы ssh. host=False — без user@host в конце: для
+    rsync -e (rsync сам дописывает -l user и хост из удалённого
+    спецификатора; хост в -e ломает парсинг OpenSSH).
+    ssh arguments. host=False — no user@host at the end: for rsync -e
+    (rsync appends -l user and the host from the remote spec itself;
+    a host inside -e breaks OpenSSH argument parsing)."""
+    a = ["ssh", f"-p {int(end.get('port') or 22)}",
+         "-o", "BatchMode=yes",
+         "-o", "StrictHostKeyChecking=accept-new",
+         "-o", "ConnectTimeout=15"]
+    if host:
+        a.append(f"{end['user']}@{end['host']}")
+    return a
+
+
+def win_rsync_path(path):
+    """Путь Windows в форме, которую понимает удалённый rsync
+    (сборки на Cygwin/DeltaRSync): "D:\\Data" -> "/cygdrive/d/Data".
+    Пути, которые уже не начинаются с буквы диска (например
+    "/cygdrive/c/..."), возвращаются как есть.
+
+    A Windows path in the form understood by the remote rsync
+    (Cygwin/DeltaRSync builds): "D:\\Data" -> "/cygdrive/d/Data".
+    Paths that do not start with a drive letter (e.g.
+    "/cygdrive/c/...") are returned as-is.
+    """
+    m = re.match(r"^([A-Za-z]):[\\/](.*)$", path or "")
+    if not m:
+        return (path or "").strip("\\")
+    rest = m.group(2).replace("\\", "/").strip("/")
+    if not rest:
+        return f"/cygdrive/{m.group(1).lower()}"
+    return f"/cygdrive/{m.group(1).lower()}/{rest}"
 
 
 def ssh_source_arg(src):
     """Аргумент удалённого источника для rsync (Windows через SSH).
     Remote source argument for rsync (Windows over SSH)."""
-    path = src.get("path", "").rstrip("\\/")
+    path = win_rsync_path(src.get("path", ""))
     return f"{src['user']}@{src['host']}:{path}/"
+
+
+# Точка монтирования теневого снимка (VSS): путь всегда ASCII и не
+# зависит от языка Windows; метки строк у vssadmin локализованы,
+# поэтому ищем сам путь
+# The shadow copy mount point: the path is always ASCII and does not
+# depend on the Windows language; vssadmin line labels are localized,
+# so we look for the path itself
+VSS_INSTALL_RE = re.compile(
+    r"(\\\\\?\\GLOBALROOT\\Device\\HarddiskVolumeShadowCopy\d+)")
+# запасной вариант: «Install path: …» на разных языках
+# fallback: "Install path: …" in several languages
+VSS_LABEL_RE = re.compile(
+    r"(?:Install path|Путь установки|Installationspfad|"
+    r"Chemin d'installation|Caminho de instalação|安装路径)"
+    r"\s*:\s*(\S+)")
+VSS_GUID_RE = re.compile(
+    r"\{([0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-"
+    r"[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})\}")
+
+
+def _vss_ssh(end, cmd, timeout=120):
+    """Выполнить команду на Windows по SSH (авторизация по ключу,
+    BatchMode — пароль не запрашивается).
+    Возвращает (rc, объединённый вывод stdout+stderr).
+
+    Run a command on Windows over SSH (key-based auth, BatchMode —
+    no password prompt). Returns (rc, combined stdout+stderr).
+    """
+    # вывод Windows (CP866/CP1251) не обязан быть UTF-8 — пробуем
+    # кодировки по порядку, чтобы ошибки читались
+    # Windows output (CP866/CP1251) is not necessarily UTF-8 — try the
+    # encodings in order so that error messages stay readable
+    proc = subprocess.run(ssh_argv(end) + [cmd], capture_output=True,
+                          timeout=timeout)
+    raw = (proc.stdout or b"") + (proc.stderr or b"")
+    for enc in ("utf-8", "cp866", "cp1251", "latin-1"):
+        try:
+            return proc.returncode, raw.decode(enc)
+        except (UnicodeDecodeError, LookupError):
+            continue
+    return proc.returncode, raw.decode("utf-8", errors="replace")
+
+
+def vss_parse_install_path(out):
+    """Точка монтирования теневого снимка из вывода vssadmin.
+    Install path from vssadmin output (None, если не найдена / not
+    found)."""
+    m = VSS_INSTALL_RE.search(out) or VSS_LABEL_RE.search(out)
+    return m.group(1) if m else None
+
+
+def vss_create_shadow(src, log):
+    """Создать теневой снимок (VSS) тома, содержащего каталог источника.
+    Возвращает (shadow_id, install_path). install_path — точка
+    монтирования снимка, откуда копирует rsync (файлы, открытые на
+    запись, копируются в состоянии на момент снимка).
+
+    Создаётся и монтируется автоматически; удаляется вызовом
+    vss_delete_shadow ПОСЛЕ прогона (в любом исходе).
+
+    Create a shadow copy (VSS) of the volume that contains the source
+    directory. Returns (shadow_id, install_path) — the mount point
+    that rsync copies from (files open for writing are copied as of
+    the snapshot moment). Created and mounted automatically; delete
+    with vss_delete_shadow AFTER the run (in any outcome).
+    """
+    drive = (src.get("path") or "")[:1].upper()
+    if not re.fullmatch(r"[A-Z]", drive):
+        raise RuntimeError("VSS: путь источника должен начинаться с буквы "
+                           "диска (например, D:\\Data)")
+    log.write("Создание теневого снимка тома " + drive +
+              ": (vssadmin, по SSH)")
+    rc, out = _vss_ssh(src, f"vssadmin create shadow /for={drive}: /quiet")
+    if rc != 0:
+        # vssadmin при ошибке печатает строку «Error: …»/«Ошибка: …»,
+        # а затем баннер списка команд — берём только строку ошибки
+        # on error vssadmin prints an "Error: …" line and then a help
+        # banner — take only the error line
+        msg = None
+        for ln in out.splitlines():
+            ln = ln.strip()
+            if ln.lower().startswith(("error:", "ошибка:")):
+                msg = ln
+                break
+        raise RuntimeError("vssadmin create shadow: "
+                           + (msg or out.strip()[-500:]))
+    m = VSS_GUID_RE.search(out)
+    if not m:
+        raise RuntimeError("vssadmin create shadow: не удалось распознать "
+                           "ID снимка в выводе: " + out.strip()[-200:])
+    shadow_id = m.group(1)
+    log.write(f"Теневой снимок создан: {{{shadow_id}}}")
+    rc, out = _vss_ssh(src, f"vssadmin list shadows /shadow={{{shadow_id}}}")
+    install = vss_parse_install_path(out) if rc == 0 else None
+    if not install:
+        # не бросаем исключение: снимок уже создан и должен быть
+        # удалён (finally); но копировать не от куда
+        raise RuntimeError("vssadmin: не найдена точка монтирования "
+                           "теневого снимка")
+    log.write("Точка монтирования снимка: " + install)
+    return shadow_id, install
+
+
+def vss_snapshot_path(src_path, install):
+    """Удалённый путь rsync на Windows: точка монтирования снимка +
+    подпуть. Буква диска в пути источника соответствует корню тома
+    (точке монтирования), поэтому снимается; разделитель — слэш
+    Windows.
+
+    Remote rsync path on Windows: the snapshot mount point plus the
+    subpath. The drive letter of the source path is the volume root
+    (the mount point), so it is stripped; the separator is the
+    Windows one.
+    """
+    rel = (src_path or "").strip("\\/")
+    m = re.match(r"^[A-Za-z]:(.*)$", rel)
+    sub = (m.group(1) if m else rel).strip("\\/")
+    return install if not sub else install + "\\" + sub
+
+
+def vss_delete_shadow(src, shadow_id, log):
+    """Удалить теневой снимок. Ошибка НЕ фатальна — только в журнал
+    (снимок можно удалить вручную).
+
+    Delete a shadow copy. Errors are not fatal — logged only (the
+    copy can be deleted manually).
+    """
+    rc, out = _vss_ssh(src, f"vssadmin delete shadows /shadow={{{shadow_id}}}")
+    if rc == 0:
+        log.write(f"Теневой снимок удалён: {{{shadow_id}}}")
+    else:
+        log.write("Не удалось удалить теневой снимок "
+                  f"{{{shadow_id}}}: " + out.strip()[-300:] +
+                  " (удалите вручную: vssadmin delete shadows /for=<том>)")
 
 
 def rsyncd_spec(end, sub=""):
@@ -467,6 +630,9 @@ def source_label(job):
     if t == "ssh":
         return (f"SSH {s.get('user', '')}@{s.get('host', '')}:"
                 f"{s.get('path', '')}")
+    if t == "vss":
+        return (f"VSS {s.get('user', '')}@{s.get('host', '')}:"
+                f"{s.get('path', '')} (теневой снимок)")
     if t == "rsyncd":
         return "rsyncd " + rsyncd_spec(s, s.get("path", ""))
     if t == "ftp":
@@ -546,8 +712,12 @@ class SshDest:
     def _run(self, cmd, timeout=180):
         clog("DEBUG", f"Удалённая команда "
               f"({self.dest['user']}@{self.dest['host']}): {cmd}")
+        # errors=replace: вывод cmd.exe (CP866/CP1251) не обязан быть UTF-8
+        # errors=replace: cmd.exe output (CP866/CP1251) is not necessarily UTF-8
         r = subprocess.run(ssh_argv(self.dest) + [cmd],
-                           capture_output=True, text=True, timeout=timeout)
+                           capture_output=True, text=True,
+                           encoding="utf-8", errors="replace",
+                           timeout=timeout)
         clog("DEBUG", f"Удалённая команда завершена: код {r.returncode}")
         return r
 
@@ -558,7 +728,14 @@ class SshDest:
         return self._p(rel)
 
     def target(self, rel):
-        return (f"{self.dest['user']}@{self.dest['host']}:" + self._p(rel))
+        # форма пути для rsync — /cygdrive/... (сборки Windows на
+        # Cygwin/DeltaRSync); служебные команды (mkdir/dir) —
+        # Windows-формат (_p)
+        # the rsync path form is /cygdrive/... (Windows builds on
+        # Cygwin/DeltaRSync); the utility commands (mkdir/dir) use
+        # the Windows form (_p)
+        return (f"{self.dest['user']}@{self.dest['host']}:"
+                + win_rsync_path(self._p(rel)) + "/")
 
     def mkdir(self, rel):
         # cmd.exe: mkdir сам создаёт вложенные каталоги
@@ -1288,11 +1465,17 @@ def sanitize_name(name):
 
 
 def build_rsync(job, d, target_rel, link_dest, dry, src_path, ssh_src=None,
-                password_files=None):
+                password_files=None, rsync_path=None):
     opts = job.get("options") or {}
     # --stats — итоговая статистика (файлы, размер, скорость) для отчёта
     # --stats — the final statistics (files, size, speed) for the report
     cmd = ["rsync", "-a", "--partial", "--timeout=900", "--stats"]
+    # --rsync-path — полный путь к rsync на Windows (обход сломанного
+    # или лишнего rsync.cmd из System32, приоритет над PATH)
+    # --rsync-path — the full path to rsync on Windows (bypasses a
+    # broken or stray rsync.cmd in System32, takes priority over PATH)
+    if rsync_path:
+        cmd.append(f"--rsync-path={rsync_path}")
     if opts.get("checksum"):
         cmd.append("--checksum")
     if opts.get("compress"):
@@ -1316,10 +1499,15 @@ def build_rsync(job, d, target_rel, link_dest, dry, src_path, ssh_src=None,
     # нужен в любом случае, когда используется SSH-конец
     # there is only one remote end (source OR destination), so -e ssh
     # is needed in any case when an SSH end is used
+    # host=False: rsync сам добавляет -l user и хост; user@host в
+    # -e заставлял OpenSSH считать опции после хоста командой
+    # host=False: rsync adds -l user and the host itself; a user@host
+    # inside -e makes OpenSSH treat the options after the host as the
+    # remote command
     if ssh_src is not None:
-        cmd[1:1] = ["-e", " ".join(ssh_argv(ssh_src))]
+        cmd[1:1] = ["-e", " ".join(ssh_argv(ssh_src, host=False))]
     elif isinstance(d, SshDest):
-        cmd[1:1] = ["-e", " ".join(ssh_argv(d.dest))]
+        cmd[1:1] = ["-e", " ".join(ssh_argv(d.dest, host=False))]
     # источник: trailing "/" означает «содержимое каталога»
     # source: a trailing "/" means "the contents of the directory"
     cmd.append(src_path.rstrip("/") + "/")
@@ -1375,7 +1563,10 @@ def _parse_rsync_stats(lines):
     """
     st = {}
     for ln in lines:
-        if ln.startswith("Number of files transferred:"):
+        if ln.startswith("Number of files transferred:") \
+                or ln.startswith("Number of regular files transferred:"):
+            # старый rsync: «Number of files transferred: N»;
+            # rsync >= 3.2: «Number of regular files transferred: N»
             m = re.search(r":\s*(\d+)", ln)
             if m:
                 st["files"] = int(m.group(1))
@@ -3224,6 +3415,9 @@ def run_job(job_id, dry=False, lftp_overrides=None):
         log = job_log(job_id, job.get("name", job_id))
         unmount_ids = []
         pass_files = {}  # rsyncd: "src"/"dst" -> Path к временному паролю
+        vss_shadow = None  # ID теневого снимка (VSS-источник) —
+        # удаляется в finally в любом исходе
+        # VSS shadow copy ID — deleted in the finally, in any outcome
         clog("INFO", f"Запуск задания '{job.get('name', job_id)}' "
               f"({'тестовый прогон' if dry else 'обычный'} | "
               f"режим: {job.get('mode', 'incremental')})")
@@ -3306,6 +3500,25 @@ def run_job(job_id, dry=False, lftp_overrides=None):
             elif src.get("type") == "ssh":
                 src_path = ssh_source_arg(src)
                 log.write(f"SSH-источник: {src['user']}@{src['host']}:{src['path']}")
+            elif src.get("type") == "vss":
+                # теневой снимок (VSS) на Windows: создаём снимок тома
+                # по SSH (vssadmin), rsync копирует из точки
+                # монтирования снимка (файлы, открытые на запись, не
+                # повреждены — состояние на момент снимка), снимок
+                # удаляется в finally в любом исходе
+                shid, install = vss_create_shadow(src, log)
+                vss_shadow = shid
+                # путь источника вида "D:\Data": буква диска
+                # соответствует корню тома (точке монтирования
+                # снимка), поэтому из пути снимаем букву диска и
+                # оставляем только подпуть
+                # the source path is like "D:\Data": the drive letter is
+                # the volume root (the snapshot mount point), so strip
+                # the letter and keep only the subpath
+                remote = vss_snapshot_path(src.get("path"), install)
+                src_path = f"{src['user']}@{src['host']}:{remote}"
+                log.write(f"VSS-источник: {src['user']}@{src['host']}:"
+                          + remote + " (из теневого снимка)")
             elif src.get("type") == "rsyncd":
                 src_path = rsyncd_spec(src, src.get("path", ""))
                 log.write("rsyncd-источник: " + src_path)
@@ -3344,6 +3557,14 @@ def run_job(job_id, dry=False, lftp_overrides=None):
                             prev_dt = None
                         if prev_dt and (datetime.now() - prev_dt).days < full_every:
                             link_dest = d.abs_path(f"{job_rel}/{prev}")
+                            # SSH-цель: --link-dest — путь НА УДАЛЁННОЙ
+                            # машине, удалённому rsync (Cygwin) нужна
+                            # форма /cygdrive/...
+                            # SSH destination: --link-dest is a path on the
+                            # REMOTE machine; the remote rsync (Cygwin) needs
+                            # the /cygdrive/... form
+                            if isinstance(d, SshDest):
+                                link_dest = win_rsync_path(link_dest)
                             log.write(f"Инкрементальный снапшот (link-dest: {prev})")
                         else:
                             log.write(f"Предыдущий снапшот старше {full_every} дн. "
@@ -3355,15 +3576,36 @@ def run_job(job_id, dry=False, lftp_overrides=None):
             # каталог снапшота создаём всегда (в т.ч. при тестовом прогоне):
             # rsync --dry-run не создаёт каталоги на стороне приёмника
             d.mkdir(target_rel)
-            ssh_src = src if src.get("type") == "ssh" else None
+            # VSS-источник — тот же SSH-конец (ключевая авторизация):
+            # rsync ходит на Windows, путь — точка монтирования снимка
+            # a VSS source is the same SSH end (key-based auth): rsync
+            # connects to Windows, the path is the shadow mount point
+            ssh_src = src if src.get("type") in ("ssh", "vss") else None
+            # полный путь к удалённому rsync берём с того конца,
+            # который удалённый (источник ssh/vss ИЛИ цель ssh)
+            # the full remote rsync path comes from whichever end is
+            # remote (the ssh/vss source OR the ssh destination)
+            rsync_path = None
+            if ssh_src is not None:
+                rsync_path = (src.get("rsync_path") or "").strip() or None
+            elif isinstance(d, SshDest):
+                rsync_path = ((dest or {}).get("rsync_path") or "").strip() or None
             cmd = build_rsync(job, d, target_rel, link_dest, dry,
                               src_path, ssh_src,
-                              password_files=list(pass_files.values()))
+                              password_files=list(pass_files.values()),
+                              rsync_path=rsync_path)
             log.write("Команда: " + " ".join(cmd))
             # LC_ALL=C — стабильные (не локализованные) метки статистики
             # rsync независимо от локали системы
+            # encoding/errors: удалённый rsync (Windows, кириллическая
+            # локаль) может печатать CP866/CP1251 — не роняем воркер
+            # на декодировании, заменяем неразборчивые байты
+            # encoding/errors: a remote rsync (Windows, Cyrillic
+            # locale) may print CP866/CP1251 — don't crash the worker
+            # on decoding, replace undecodable bytes
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                                     stderr=subprocess.STDOUT, text=True,
+                                    encoding="utf-8", errors="replace",
                                     start_new_session=True,
                                     env=dict(os.environ,
                                              LC_ALL="C", LANG="C"))
@@ -3418,6 +3660,14 @@ def run_job(job_id, dry=False, lftp_overrides=None):
                     pf.unlink()
                 except OSError:
                     pass
+            if vss_shadow is not None:
+                # теневой снимок удаляем в любом исходе (успех, ошибка,
+                # остановка): копия уже сделана (или прервана), держать
+                # снимок — значит занимать место на томе источника
+                try:
+                    vss_delete_shadow(src, vss_shadow, log)
+                except Exception as e:
+                    log.write(f"Ошибка удаления теневого снимка: {e!r}")
             raw_dur = time.time() - start
             dur = round(raw_dur, 1)
             nxt = compute_next_run(job, datetime.now(), time.time())
@@ -3549,7 +3799,8 @@ def normalize_job(job):
     if isinstance(s, str):
         s = {"type": "local", "path": s}
     s = dict(s or {})
-    for k in ("path", "user", "password", "vers", "host", "module"):
+    for k in ("path", "user", "password", "vers", "host", "module",
+              "rsync_path"):
         if isinstance(s.get(k), str):
             s[k] = s[k].strip()
     if s.get("port"):
@@ -3565,6 +3816,8 @@ def normalize_job(job):
         s["port"] = 21
     if s.get("type") == "ftp" and not s.get("path"):
         s["path"] = "/"  # пусто = корень FTP-сервера
+    if s.get("type") == "vss" and not s.get("port"):
+        s["port"] = 22
     job["source"] = s
     ex = job.get("exclude")
     if isinstance(ex, str):
@@ -3572,7 +3825,8 @@ def normalize_job(job):
     else:
         job["exclude"] = [str(x).strip() for x in (ex or []) if str(x).strip()]
     d = job.get("destination") or {}
-    for k in ("path", "user", "password", "vers", "host", "module"):
+    for k in ("path", "user", "password", "vers", "host", "module",
+              "rsync_path"):
         if isinstance(d.get(k), str):
             d[k] = d[k].strip()
     if d.get("port"):
@@ -3659,6 +3913,17 @@ def validate_job(job):
             errs.append("Укажите пользователя SSH (источник)")
         if not src.get("path"):
             errs.append("Укажите каталог на Windows (источник)")
+    elif stype == "vss":
+        if not src.get("host"):
+            errs.append("Укажите хост Windows (источник, VSS)")
+        if not src.get("user"):
+            errs.append("Укажите пользователя SSH (источник, VSS) — "
+                        "локальный администратор Windows")
+        if not src.get("path"):
+            errs.append("Укажите каталог на Windows (источник, VSS)")
+        elif not re.match(r"^[A-Za-z]:[\\/]", src.get("path") or ""):
+            errs.append("Путь источника (VSS) — буква диска каталога "
+                        "Windows, например D:\\Data")
     elif stype == "rsyncd":
         if not src.get("host"):
             errs.append("Укажите хост rsyncd (источник)")
@@ -3703,6 +3968,12 @@ def validate_job(job):
         errs.append("Одновременно удалённый источник и удалённая цель (SSH → SSH) "
                     "невозможны: rsync поддерживает только один удалённый конец. "
                     "Используйте SMB или локальный каталог для одного из концов")
+    # VSS-источник: удалённый конец — сам Windows по SSH, поэтому цель
+    # должна быть на самом сервере бэкапа (локальный каталог или SMB)
+    if stype == "vss" and t not in ("local", "smb"):
+        errs.append("Источник VSS (теневой снимок): цель — локальный "
+                    "каталог сервера бэкапа или SMB-шара (rsync "
+                    "поддерживает только один удалённый конец)")
     # FTP (lftp) может работать только с локальным каталогом или
     # другим FTP-сервером — SMB и SSH lftp не поддерживаются
     if (stype == "ftp" and t not in ("local", "ftp")) or \
