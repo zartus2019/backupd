@@ -41,10 +41,12 @@ Limitations:
   (SMB, SSH and rsyncd are not supported). No snapshots are made — there
   is always one current copy (mode "Mirror").
 - **Windows (VSS)**: the source is a shadow copy of a Windows volume:
-  `vssadmin create shadow` is run over SSH, and rsync copies files from
-  the snapshot's mount point — this also copies files that are open for
+  over SSH the `vsscreate.exe` tool creates a consistent snapshot
+  (writers frozen) and exposes it on a free drive letter, from which
+  rsync copies the files — this also copies files that are open for
   writing, correctly. The SSH user must be a local Windows
-  administrator (VSS requires admin rights); an SSH key is required.
+  administrator (VSS requires admin rights); an SSH key and the
+  `vsscreate.exe` file on the machine are required (see Option 3).
   The destination may only be a local directory of the server or an SMB
   share. The shadow copy is deleted automatically after the run.
 
@@ -259,6 +261,25 @@ Option 2 (OpenSSH Server + rsync in PATH + key), plus:
 2. The Volume Shadow Copy (VSS) service is enabled (it is on standard
    Windows editions; check: `vssadmin list writers` in cmd as
    administrator).
+3. The **`vsscreate.exe`** file (in the repo: `tools/vsscreate.exe`) is
+   installed on the Windows machine. It creates the shadow copy and
+   exposes it on a free drive letter — this is the only way the remote
+   (Cygwin/MSYS2) rsync can read the snapshot. This is needed because:
+   - Windows 11 24H2/25H2 removed the `vssadmin create shadow` command;
+   - the `\\?\GLOBALROOT\...` path (the snapshot's standard mount point)
+     is unreadable by remote rsync.
+
+   Copy `tools/vsscreate.exe` to the Windows machine (by default it is
+   expected at `C:\backupd\vsscreate.exe`; another path can be set in
+   the "Path to vsscreate.exe on Windows" field).
+
+How it works: backupd runs `vsscreate.exe create <volume>:` over SSH.
+The tool creates a **consistent** snapshot of the volume (a persistent
+snapshot, writers frozen — the file state at the snapshot moment) and
+exposes it on a free drive letter (e.g. `Z:`). rsync copies the files
+from that letter (`Z:\Data` → `/cygdrive/z/Data`). After the run (in any
+outcome) the snapshot is deleted and the drive letter is released
+automatically.
 
 In backupd: *Source type* → "Windows — shadow copy (VSS over SSH)",
 host, user, a directory like `D:\Data` (the drive letter is the volume

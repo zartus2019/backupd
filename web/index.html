@@ -393,7 +393,13 @@ footer { text-align:center; color:#94a3b8; font-size:12px; padding:8px 0 26px; }
           </div>
           <div class="hint" data-i18n-html="srcRsyncPathHint">Обычно пусто (rsync ищется в PATH). Укажите полный путь (например <span class="mono">C:\rsync\bin\rsync.exe</span>), если в System32 лежит чужой <span class="mono">rsync.cmd</span> или rsync установлен не в PATH.
           </div>
-          <div class="hint" data-i18n-html="srcVssHint">На Windows по SSH создаётся теневой снимок тома (vssadmin), и rsync копирует файлы из точки монтирования снимка — включая открытые на запись. Нужен SSH-ключ, пользователь — локальный администратор Windows. Цель — только локальный каталог сервера бэкапа или SMB-шара.</div>
+          <div style="margin-top:10px">
+            <label data-i18n="srcVssTool">Путь к vsscreate.exe на Windows (опц.)</label>
+            <input type="text" id="f_src_vss_tool" class="mono" placeholder="C:\backupd\vsscreate.exe">
+          </div>
+          <div class="hint" data-i18n-html="srcVssToolHint">Создаёт теневой снимок и экспонирует его на свободную букву диска. По умолчанию <span class="mono">C:\backupd\vsscreate.exe</span> — скопируйте <span class="mono">tools/vsscreate.exe</span> из репозитория на Windows-машину.
+          </div>
+          <div class="hint" data-i18n-html="srcVssHint">На Windows по SSH утилита vsscreate.exe создаёт теневой снимок тома (снимок последовательный: writers заморожены) и экспонирует его на свободную букву диска; rsync копирует файлы с этой буквы — включая открытые на запись. Нужен SSH-ключ, пользователь — локальный администратор Windows, и файл <span class="mono">vsscreate.exe</span> на машине. Цель — только локальный каталог сервера бэкапа или SMB-шара.</div>
         </fieldset>
       </div>
 
@@ -886,9 +892,11 @@ ru: {
   srcSshHint: "rsync подтянет файлы с Windows по SSH: нужен ключ (<span class=\"mono\">ssh-copy-id user@windows</span>). Одновременно с SSH-целью использовать нельзя (rsync поддерживает только один удалённый конец).",
   srcRsyncPath: "Путь к rsync.exe на Windows (опц.)",
   srcRsyncPathHint: "Обычно пусто (rsync ищется в PATH). Укажите полный путь (например <span class=\"mono\">C:\\rsync\\bin\\rsync.exe</span>), если в System32 лежит чужой <span class=\"mono\">rsync.cmd</span> или rsync установлен не в PATH.",
+  srcVssTool: "Путь к vsscreate.exe на Windows (опц.)",
+  srcVssToolHint: "Создаёт теневой снимок и экспонирует его на свободную букву диска. По умолчанию <span class=\"mono\">C:\\backupd\\vsscreate.exe</span> — скопируйте <span class=\"mono\">tools/vsscreate.exe</span> из репозитория на Windows-машину.",
   srcVssOpt: "Windows — теневой снимок (VSS через SSH)",
   srcVssLegend: "Теневой снимок Windows (VSS) — источник, по SSH",
-  srcVssHint: "На Windows по SSH создаётся теневой снимок тома (vssadmin), и rsync копирует файлы из точки монтирования снимка — включая открытые на запись. Нужен SSH-ключ, пользователь — локальный администратор Windows. Цель — только локальный каталог сервера бэкапа или SMB-шара.",
+  srcVssHint: "На Windows по SSH утилита vsscreate.exe создаёт теневой снимок тома (снимок последовательный: writers заморожены) и экспонирует его на свободную букву диска; rsync копирует файлы с этой буквы — включая открытые на запись. Нужен SSH-ключ, пользователь — локальный администратор Windows, и файл <span class=\"mono\">vsscreate.exe</span> на машине. Цель — только локальный каталог сервера бэкапа или SMB-шара.",
   srcRsyncdLegend: "rsync-демон (rsyncd) — источник, без SSH",
   module: "Модуль", moduleSub: "Подпуть в модуле (опц.)",
   userOpt: "Пользователь (опц.)", passOpt: "Пароль (опц.)",
@@ -1055,9 +1063,11 @@ en: {
   srcSshHint: "rsync will pull files from Windows over SSH: a key is needed (<span class=\"mono\">ssh-copy-id user@windows</span>). Cannot be used together with an SSH destination (rsync supports only one remote end).",
   srcRsyncPath: "Path to rsync.exe on Windows (opt.)",
   srcRsyncPathHint: "Usually empty (rsync is looked up in PATH). Give the full path (e.g. <span class=\"mono\">C:\\rsync\\bin\\rsync.exe</span>) if System32 has a stray <span class=\"mono\">rsync.cmd</span> or rsync is not on PATH.",
+  srcVssTool: "Path to vsscreate.exe on Windows (opt.)",
+  srcVssToolHint: "Creates the shadow copy and exposes it on a free drive letter. Defaults to <span class=\"mono\">C:\\backupd\\vsscreate.exe</span> — copy <span class=\"mono\">tools/vsscreate.exe</span> from the repo to the Windows machine.",
   srcVssOpt: "Windows — shadow copy (VSS over SSH)",
   srcVssLegend: "Windows shadow copy (VSS) — source, over SSH",
-  srcVssHint: "A shadow copy of the volume is created on Windows over SSH (vssadmin), and rsync copies files from the snapshot mount point — including files open for writing. An SSH key is needed; the user must be a local Windows administrator. The destination must be a local directory of the backup server or an SMB share.",
+  srcVssHint: "On Windows, over SSH, the vsscreate.exe tool creates a shadow copy of the volume (a consistent snapshot: writers are frozen) and exposes it on a free drive letter; rsync copies the files from that letter — including files open for writing. An SSH key is needed, the user must be a local Windows administrator, and the <span class=\"mono\">vsscreate.exe</span> file must be present on the machine. The destination must be a local directory of the backup server or an SMB share.",
   srcRsyncdLegend: "rsync daemon (rsyncd) — source, no SSH",
   module: "Module", moduleSub: "Subpath in module (opt.)",
   userOpt: "User (opt.)", passOpt: "Password (opt.)",
@@ -1540,6 +1550,7 @@ function openJobForm(id) {
   document.getElementById("f_src_vss_user").value = s.user || "";
   document.getElementById("f_src_vss_path").value = s.path && s.type === "vss" ? s.path : "";
   document.getElementById("f_src_vss_rsync_path").value = s.rsync_path || "";
+  document.getElementById("f_src_vss_tool").value = s.vss_tool || "";
   document.getElementById("f_src_rsyncd_host").value = s.type === "rsyncd" ? (s.host || "") : "";
   document.getElementById("f_src_rsyncd_port").value = s.type === "rsyncd" ? (s.port || 873) : 873;
   document.getElementById("f_src_rsyncd_module").value = s.type === "rsyncd" ? (s.module || "") : "";
@@ -1682,6 +1693,7 @@ async function saveJob() {
       rsync_path: st === "ssh" ? document.getElementById("f_src_ssh_rsync_path").value
                : st === "vss" ? document.getElementById("f_src_vss_rsync_path").value
                : "",
+      vss_tool: st === "vss" ? document.getElementById("f_src_vss_tool").value : "",
     },
     destination: {
       type: t,

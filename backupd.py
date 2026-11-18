@@ -402,6 +402,22 @@ VSS_LABEL_RE = re.compile(
 VSS_GUID_RE = re.compile(
     r"\{([0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-"
     r"[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})\}")
+# Вывод vsscreate.exe: SHADOW_ID={...} / DEVICE=... / EXPOSED=Z:\
+# vsscreate.exe output lines
+VSS_SHID_RE = re.compile(r"SHADOW_ID=\{([0-9A-Fa-f-]+)\}")
+VSS_EXPOSED_RE = re.compile(r"EXPOSED=([A-Za-z]):")
+# Путь к vsscreate.exe на Windows (можно переопределить полем
+# vss_tool в источнике). Windows 11 24H2/25H2 убрали
+# `vssadmin create shadow`, а путь \\\?\GLOBALROOT\... не читается
+# удалённым rsync'ом (Cygwin/MSYS2), поэтому снимок создаёт отдельная
+# утилита: persistent-снимок (VSS_CTX_APP_ROLLBACK, writers заморожены)
+# + экспозиция на свободную букву диска.
+# Path to vsscreate.exe on Windows (override with the vss_tool field).
+# Win11 24H2/25H2 removed `vssadmin create shadow`, and the
+# \\\?\GLOBALROOT\... path is unreadable by remote (Cygwin/MSYS2) rsync,
+# so a separate tool creates the snapshot: a persistent one
+# (VSS_CTX_APP_ROLLBACK, writers frozen) exposed on a free drive letter.
+VSS_TOOL_DEFAULT = "C:\\backupd\\vsscreate.exe"
 
 
 def _vss_ssh(end, cmd, timeout=120):
@@ -437,71 +453,89 @@ def vss_parse_install_path(out):
 
 def vss_create_shadow(src, log):
     """Создать теневой снимок (VSS) тома, содержащего каталог источника.
-    Возвращает (shadow_id, install_path). install_path — точка
-    монтирования снимка, откуда копирует rsync (файлы, открытые на
-    запись, копируются в состоянии на момент снимка).
+    Возвращает (shadow_id, exposed). exposed — буква диска (например
+    "Z:"), на которую экспонирован снимок; rsync копирует из
+    exposed + подпуть (файлы, открытые на запись, копируются в
+    состоянии на момент снимка).
 
-    Создаётся и монтируется автоматически; удаляется вызовом
-    vss_delete_shadow ПОСЛЕ прогона (в любом исходе).
+    Снимок создаёт утилита vsscreate.exe (путь — поле vss_tool или
+    VSS_TOOL_DEFAULT): Windows 11 24H2/25H2 не имеют
+    `vssadmin create shadow`, а путь GLOBALROOT (точка монтирования
+    снимка) не читается удалённым rsync'ом, поэтому снимок делается
+    persistent (writers
+    заморожены) и экспонируется на свободную букву диска.
+
+    Создаётся автоматически; удаляется вызовом vss_delete_shadow
+    ПОСЛЕ прогона (в любом исходе).
 
     Create a shadow copy (VSS) of the volume that contains the source
-    directory. Returns (shadow_id, install_path) — the mount point
-    that rsync copies from (files open for writing are copied as of
-    the snapshot moment). Created and mounted automatically; delete
-    with vss_delete_shadow AFTER the run (in any outcome).
+    directory. Returns (shadow_id, exposed) — the drive letter (e.g.
+    "Z:") the snapshot is exposed on; rsync copies from exposed + the
+    subpath (files open for writing are copied as of the snapshot
+    moment). The snapshot is created by the vsscreate.exe tool (path —
+    the vss_tool field or VSS_TOOL_DEFAULT): Win11 24H2/25H2 lack
+    `vssadmin create shadow`, and the GLOBALROOT path (the snapshot
+    mount point) is unreadable by remote rsync, so the snapshot is
+    made persistent
+    (writers frozen) and exposed on a free drive letter.
+
+    Created automatically; delete with vss_delete_shadow AFTER the run
+    (in any outcome).
     """
     drive = (src.get("path") or "")[:1].upper()
     if not re.fullmatch(r"[A-Z]", drive):
         raise RuntimeError("VSS: путь источника должен начинаться с буквы "
                            "диска (например, D:\\Data)")
-    log.write("Создание теневого снимка тома " + drive +
-              ": (vssadmin, по SSH)")
-    rc, out = _vss_ssh(src, f"vssadmin create shadow /for={drive}: /quiet")
+    tool = (src.get("vss_tool") or VSS_TOOL_DEFAULT).strip()
+    log.write(f"Создание теневого снимка тома {drive}: "
+              f"({tool} по SSH)")
+    rc, out = _vss_ssh(src, f'"{tool}" create {drive}:', timeout=300)
     if rc != 0:
-        # vssadmin при ошибке печатает строку «Error: …»/«Ошибка: …»,
-        # а затем баннер списка команд — берём только строку ошибки
-        # on error vssadmin prints an "Error: …" line and then a help
-        # banner — take only the error line
-        msg = None
-        for ln in out.splitlines():
-            ln = ln.strip()
-            if ln.lower().startswith(("error:", "ошибка:")):
-                msg = ln
-                break
-        raise RuntimeError("vssadmin create shadow: "
-                           + (msg or out.strip()[-500:]))
-    m = VSS_GUID_RE.search(out)
+        raise RuntimeError("vsscreate.exe create: " + out.strip()[-500:])
+    m = VSS_SHID_RE.search(out)
     if not m:
-        raise RuntimeError("vssadmin create shadow: не удалось распознать "
-                           "ID снимка в выводе: " + out.strip()[-200:])
+        # снимок мог быть создан, но не распознан — предупреждаем,
+        # чтобы его можно было удалить вручную
+        log.write("Внимание: vsscreate.exe завершилась с ошибкой после "
+                  "создания снимка? Проверьте «Копии volumes»/"
+                  "vssadmin list shadows на Windows и удалите вручную")
+        raise RuntimeError("vsscreate.exe: не распознан SHADOW_ID: "
+                           + out.strip()[-300:])
     shadow_id = m.group(1)
-    log.write(f"Теневой снимок создан: {{{shadow_id}}}")
-    rc, out = _vss_ssh(src, f"vssadmin list shadows /shadow={{{shadow_id}}}")
-    install = vss_parse_install_path(out) if rc == 0 else None
-    if not install:
-        # не бросаем исключение: снимок уже создан и должен быть
-        # удалён (finally); но копировать не от куда
-        raise RuntimeError("vssadmin: не найдена точка монтирования "
-                           "теневого снимка")
-    log.write("Точка монтирования снимка: " + install)
-    return shadow_id, install
+    me = VSS_EXPOSED_RE.search(out)
+    if not me:
+        # снимок создан, но экспозиция не удалась — удаляем его и
+        # роняем (копировать не от куда)
+        vss_delete_shadow(src, shadow_id, log)
+        raise RuntimeError("vsscreate.exe: снимок создан, но не удалось "
+                           "экспонировать его на букву диска: "
+                           + out.strip()[-300:])
+    exposed = me.group(1) + ":"
+    log.write(f"Теневой снимок создан: {{{shadow_id}}}, "
+              f"экспонирован на {exposed}")
+    return shadow_id, exposed
 
 
-def vss_snapshot_path(src_path, install):
-    """Удалённый путь rsync на Windows: точка монтирования снимка +
-    подпуть. Буква диска в пути источника соответствует корню тома
-    (точке монтирования), поэтому снимается; разделитель — слэш
-    Windows.
+def vss_snapshot_path(src_path, exposed):
+    """Путь rsync на Windows: буква диска, на которую экспонирован
+    снимок (корень тома) + подпуть. Буква диска в пути источника
+    соответствует корню тома, поэтому снимается; разделитель — слэш
+    Windows. Результат — в форме Windows ("Z:\\Data"), дальше
+    конвертируется win_rsync_path в "/cygdrive/z/Data".
 
-    Remote rsync path on Windows: the snapshot mount point plus the
-    subpath. The drive letter of the source path is the volume root
-    (the mount point), so it is stripped; the separator is the
-    Windows one.
+    rsync path on Windows: the drive letter the snapshot is exposed on
+    (the volume root) plus the subpath. The source path's drive letter
+    is the volume root, so it is stripped; the separator is the Windows
+    one. The result is a Windows path ("Z:\\Data"), later converted by
+    win_rsync_path to "/cygdrive/z/Data".
     """
     rel = (src_path or "").strip("\\/")
     m = re.match(r"^[A-Za-z]:(.*)$", rel)
     sub = (m.group(1) if m else rel).strip("\\/")
-    return install if not sub else install + "\\" + sub
+    # у буквы диска может быть хвостовой слэш ("Z:\") — срезаем только
+    # его, чтобы не повредить путь (например \\\?\GLOBALROOT\...)
+    exp = (exposed or "").rstrip("\\")
+    return exp if not sub else exp + "\\" + sub
 
 
 def vss_delete_shadow(src, shadow_id, log):
@@ -511,7 +545,13 @@ def vss_delete_shadow(src, shadow_id, log):
     Delete a shadow copy. Errors are not fatal — logged only (the
     copy can be deleted manually).
     """
-    rc, out = _vss_ssh(src, f"vssadmin delete shadows /shadow={{{shadow_id}}}")
+    # /quiet обязателен: в неинтерактивном режиме (SSH) vssadmin
+    # спрашивает «Do you really want to delete … (Y/N)» и при отсутствии
+    # ввода отвечает «N» — снимок не удаляется, а rc остаётся 0
+    # /quiet is mandatory: non-interactively (over SSH) vssadmin asks
+    # "Do you really want to delete … (Y/N)" and with no input answers
+    # "N" — the shadow is not deleted, yet rc stays 0
+    rc, out = _vss_ssh(src, f"vssadmin delete shadows /shadow={{{shadow_id}}} /quiet")
     if rc == 0:
         log.write(f"Теневой снимок удалён: {{{shadow_id}}}")
     else:
@@ -3501,24 +3541,32 @@ def run_job(job_id, dry=False, lftp_overrides=None):
                 src_path = ssh_source_arg(src)
                 log.write(f"SSH-источник: {src['user']}@{src['host']}:{src['path']}")
             elif src.get("type") == "vss":
-                # теневой снимок (VSS) на Windows: создаём снимок тома
-                # по SSH (vssadmin), rsync копирует из точки
-                # монтирования снимка (файлы, открытые на запись, не
-                # повреждены — состояние на момент снимка), снимок
-                # удаляется в finally в любом исходе
-                shid, install = vss_create_shadow(src, log)
+                # теневой снимок (VSS) на Windows: vsscreate.exe создаёт
+                # persistent-снимок тома и экспонирует его на свободную
+                # букву диска (по SSH), rsync копирует из этой буквы
+                # (файлы, открытые на запись, не повреждены — состояние
+                # на момент снимка), снимок удаляется в finally в любом
+                # исходе
+                # VSS on Windows: vsscreate.exe makes a persistent
+                # snapshot of the volume and exposes it on a free drive
+                # letter (over SSH); rsync copies from that letter (files
+                # open for writing are intact — state at the snapshot
+                # moment); the snapshot is deleted in finally regardless
+                shid, exposed = vss_create_shadow(src, log)
                 vss_shadow = shid
-                # путь источника вида "D:\Data": буква диска
-                # соответствует корню тома (точке монтирования
-                # снимка), поэтому из пути снимаем букву диска и
-                # оставляем только подпуть
+                # путь источника вида "D:\Data": буква диска — корень
+                # тома (корень экспонированного снимка), поэтому из пути
+                # снимаем букву диска и оставляем подпуть; результат
+                # "Z:\Data" конвертируем в "/cygdrive/z/Data"
                 # the source path is like "D:\Data": the drive letter is
-                # the volume root (the snapshot mount point), so strip
-                # the letter and keep only the subpath
-                remote = vss_snapshot_path(src.get("path"), install)
+                # the volume root (the exposed snapshot root), so strip
+                # the letter and keep the subpath; "Z:\Data" is converted
+                # to "/cygdrive/z/Data"
+                remote = win_rsync_path(vss_snapshot_path(src.get("path"),
+                                                         exposed))
                 src_path = f"{src['user']}@{src['host']}:{remote}"
                 log.write(f"VSS-источник: {src['user']}@{src['host']}:"
-                          + remote + " (из теневого снимка)")
+                          + remote + f" (из теневого снимка на {exposed})")
             elif src.get("type") == "rsyncd":
                 src_path = rsyncd_spec(src, src.get("path", ""))
                 log.write("rsyncd-источник: " + src_path)
