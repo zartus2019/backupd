@@ -228,8 +228,12 @@ mount -t cifs -o username=backupuser //192.168.1.50/backup /mnt/test
    Settings → Apps → Optional features → "OpenSSH Server" (install,
    start the service).
 2. Install [DeltaRSync](https://www.aitmail.com/deltarsync.html)
-   (or cwRsync) so that `rsync.exe` is in the system PATH
-   (check: `where rsync` in cmd).
+   (or cwRsync, or the native Win32 build from
+   [MSYS2](https://www.msys2.org/)) so that `rsync.exe` is in the
+   system PATH (check: `where rsync` in cmd). For an MSYS2 build,
+   `rsync.exe` and the `msys-*.dll` files must sit in the same
+   directory; if that directory is not on the PATH, give the full
+   path in backupd (the "Path to rsync.exe on Windows" field).
 3. Create a Windows user and a `C:\Backup` directory.
 4. On Linux:
 
